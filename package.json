@@ -1,0 +1,32 @@
+{
+  "name": "gp-cones-catastral-system",
+  "version": "1.0.0",
+  "description": "Sistema Catastral GP Cones - Node.js + React + PostgreSQL",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm start",
+    "build": "cd client && npm run build",
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install",
+    "start": "cd server && npm start"
+  },
+  "keywords": [
+    "catastral",
+    "gis",
+    "igac",
+    "antioquia",
+    "xtf",
+    "ladm-col"
+  ],
+  "author": "GP Cones Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.2.1",
+    "pg": "^8.16.3"
+  }
+}
