@@ -1,0 +1,413 @@
+1) Pantallas y formularios (UI)
+1.1 Inicio de sesión
+
+Campos
+
+Usuario/Correo (requerido)
+
+Contraseña (requerido)
+
+Recordarme (opcional)
+Acciones
+
+Ingresar
+
+Olvidé mi contraseña
+Validaciones
+
+Email/usuario no vacío; email con formato
+
+Contraseña no vacía
+Estados
+
+Error credenciales, cuenta bloqueada, MFA requerido
+
+Loading (spinner)
+
+1.2 MFA (si aplica)
+
+Pantallas
+
+Verificación: código TOTP/OTP (6 dígitos)
+
+Configuración inicial: QR (TOTP), códigos de respaldo (descarga/mostrar)
+Campos
+
+Código 6 dígitos (requerido)
+Acciones
+
+Verificar, Reenviar (para OTP por correo/sms), Usar código de respaldo
+Validaciones
+
+Numérico, longitud exacta
+
+1.3 Solicitud de recuperación de contraseña
+
+Campos
+
+Email/usuario (requerido)
+Acciones
+
+Enviar enlace
+Mensajes
+
+“Si el correo existe, enviaremos un enlace (expira en 30 min)”
+
+1.4 Restablecer contraseña (desde enlace)
+
+Campos
+
+Nueva contraseña
+
+Confirmar nueva contraseña
+Validaciones de contraseña (ejemplo)
+
+Longitud ≥ 10, mayúscula, minúscula, número, carácter especial
+
+No igual a últimas N (si aplica)
+
+Coincidencia nueva/confirmación
+Mensajes
+
+Éxito y redirección a Login
+
+1.5 Cambiar contraseña (desde perfil)
+
+Campos
+
+Contraseña actual
+
+Nueva contraseña
+
+Confirmación
+Validaciones
+
+Como arriba; bloquear si igual a actual
+
+1.6 Gestión de usuarios (solo Admin)
+
+Vistas
+
+Listado (tabla): Usuario, Nombre, Email, Rol(es), Estado, Último acceso, Acciones
+
+Crear/Editar usuario (modal/página)
+Campos (crear/editar)
+
+Nombre, Apellidos
+
+Usuario
+
+Email
+
+Rol(es) (multiselect)
+
+Estado (Activo/Inactivo/Bloqueado)
+
+Requerir cambio de contraseña al próximo inicio (checkbox)
+
+MFA requerido (checkbox)
+Acciones
+
+Crear, Guardar cambios, Desactivar/Activar, Resetear contraseña, Forzar cierre de sesión
+Filtros
+
+Rol, Estado, Búsqueda por nombre/email
+
+1.7 Gestión de roles y permisos (Admin)
+
+Vistas
+
+Listado de roles
+
+Editor de rol
+Campos
+
+Nombre del rol
+
+Descripción
+
+Permisos (checkbox por módulo/acción):
+
+USERS_MANAGE, ROLES_MANAGE, AUDIT_VIEW, SESSIONS_VIEW
+
+EXPORT_XTF, IMPORT_XTF, PREP_GDB
+
+Otros que definas (CRUD por módulo)
+Acciones
+
+Crear/Editar/Clonar rol
+
+Asignar/Revocar permisos
+
+1.8 Políticas de seguridad (Admin)
+
+Campos configurables
+
+Complejidad de contraseña (longitud, clases, expiración días, historial N)
+
+Bloqueo por intentos fallidos (p. ej. 5 intentos/15 min)
+
+Timeout de sesión (minutos)
+
+Enforced MFA por rol
+
+Lista blanca/negra de IP (opcional)
+Acciones
+
+Guardar, Restaurar valores recomendados
+
+1.9 Auditoría y trazabilidad (Admin/Revisión con permiso)
+
+Vistas
+
+Filtros: Rango de fechas, Usuario, Tipo de evento, Módulo
+
+Tabla: Fecha/hora, Usuario, IP, Evento, Recurso, Detalle
+
+Detalle de evento (diff antes/después si aplica)
+Eventos clave
+
+Login/Logout, intentos fallidos
+
+Altas/Bajas/Cambios de usuario/rol
+
+Exportar XTF (tipo/versión, alcance, hash)
+
+Importar XTF (resultado validación)
+
+Operaciones GDB (dataset/capa afectada)
+
+1.10 Sesiones activas (Admin)
+
+Vistas
+
+Tabla: Usuario, IP, Agente, Inicio, Última actividad
+Acciones
+
+Forzar cierre de sesión por usuario, por IP, por todas
+
+1.11 Acceso denegado / 403
+
+Contenido
+
+Mensaje claro + enlace a “Solicitar permisos” / volver al inicio
+
+1.12 Perfil de usuario
+
+Campos
+
+Datos básicos (solo lectura o editable acorde a política)
+
+Preferencias (idioma, zona horaria)
+
+MFA: ver estado, regenerar códigos de respaldo
+Acciones
+
+Cambiar contraseña
+
+Cerrar todas mis sesiones
+
+2) Reglas de negocio y RBAC (visibilidad y permisos)
+2.1 Acciones sensibles (según lo definido)
+
+Exportar XTF (Modelo Extendido Antioquia / XTF 1.0 IGAC)
+
+Admin: permitido siempre
+
+Revisión de Calidad: permitido si conjunto/predio Validado/Aprobado
+
+Reconocedor/Digitador: no permitido
+
+Cargar/Importar XTF
+
+Admin: permitido
+
+Revisión de Calidad: permitido para revisión/integración
+
+Reconocedor/Digitador: no permitido
+
+Preparar/Cargar GDB
+
+Admin: permitido
+
+Revisión de Calidad: permitido (verificación/validación)
+
+Reconocedor/Digitador: solo lectura (consulta)
+
+2.2 Visibilidad de UI (ejemplos)
+
+Ocultar/Deshabilitar botones de Exportar/Cargar XTF y Preparar GDB si el rol no lo permite o si el estado ≠ Validado/Aprobado (para Revisión).
+
+Mostrar tooltips con motivo de restricción.
+
+Registro de intentos no autorizados como evento de seguridad.
+
+3) Validaciones y mensajes (UX)
+
+Mensajes de error estándar
+
+Credenciales inválidas / Usuario inactivo / Cuenta bloqueada X min
+
+Código MFA inválido/expirado
+
+Enlace de recuperación caducado/ya usado
+
+No autorizado para esta acción
+
+Política de contraseña incumplida (listar reglas pendientes)
+
+Mensajes de éxito
+
+Sesión iniciada
+
+Enlace de recuperación enviado
+
+Contraseña actualizada
+
+Usuario creado/actualizado
+
+Políticas guardadas
+
+Exportación/Importación iniciada y/o finalizada
+
+Estados de proceso
+
+Spinners y banners para: inicio de sesión, validación MFA, envío de correos, exportación/importación, guardado de políticas
+
+Accesibilidad
+
+Labels/aria-* descriptivos, foco en primer campo con error, atajos de teclado básicos (Enter submit, Esc cerrar modal)
+
+4) Contrato API (mínimo sugerido para integrar)
+
+Auth
+
+POST /auth/login → { user|email, password } ⇒ { accessToken, refreshToken?, mfaRequired }
+
+POST /auth/mfa/verify → { code } ⇒ tokens
+
+POST /auth/forgot → { email }
+
+POST /auth/reset → { token, newPassword }
+
+POST /auth/change-password → { currentPassword, newPassword }
+
+POST /auth/logout → revoke
+
+GET /auth/me → perfil + roles + permisos
+
+Usuarios
+
+GET /users?role=&q=&state= → listado
+
+POST /users → crear
+
+PUT /users/:id → editar (roles, estado, mfaRequired, forcePasswordChange)
+
+POST /users/:id/reset-password → dispara email
+
+POST /users/:id/sessions/revoke → cierra sesiones del usuario
+
+Roles/Permisos
+
+GET /roles / POST /roles / PUT /roles/:id
+
+Permisos disponibles (catálogo): GET /permissions
+
+Políticas
+
+GET /security/policies / PUT /security/policies
+
+Sesiones
+
+GET /sessions → activas
+
+POST /sessions/revoke → masivo
+
+Auditoría
+
+GET /audit?from=&to=&user=&type=&module=
+
+GET /audit/:id
+
+XTF/GDB (sensibles, con RBAC)
+
+POST /xtf/import → subir archivo; retorna jobId
+
+GET /xtf/import/:jobId → estado + reporte
+
+POST /xtf/export → { perfil, alcance } → jobId + downloadUrl cuando finaliza
+
+POST /gdb/prepare → { dataset/capa } → jobId
+
+GET /jobs/:jobId → estado (queued, running, success, failed) + mensajes
+
+5) Modelos de datos (frontend)
+
+User
+
+id, nombre, apellidos, usuario, email, roles[], estado, ultimoAcceso, mfaRequired, forcePasswordChange
+
+Role
+
+id, nombre, descripcion, permisos[]
+
+Permission
+
+id, codigo (e.g., EXPORT_XTF), descripcion, modulo
+
+SecurityPolicy
+
+passwordMinLength, requireUpper/lower/number/special, expirationDays, historyCount
+
+maxFailedAttempts, lockoutMinutes
+
+sessionTimeoutMinutes, enforceMFAForRoles[], ipAllowList[]
+
+Session
+
+id, userId, ip, userAgent, inicio, ultimaActividad
+
+AuditEvent
+
+id, fecha, usuario, ip, tipo, modulo, recursoId, detalle (antes/después/hash/resultados)
+
+Job (procesos XTF/GDB)
+
+id, tipo (import/export/prepare), estado, iniciadoPor, progreso%, mensajes[], resultado (downloadUrl, reporte)
+
+6) Navegación y guardas
+
+Rutas públicas: /login, /forgot, /reset
+
+Rutas protegidas: /app/** con guardas por token válido y permisos
+
+Guardas por rol/permiso: ejemplo /xtf visible solo a Admin o Revisión con condiciones
+
+Manejo de sesión: refresh token o re-login; cierre por inactividad (timeout)
+
+7) Telemetría, monitoreo y pruebas
+
+Eventos de UI: intentos fallidos, bloqueos, cambios de políticas
+
+Pruebas:
+
+Unitarias: validadores (password/email/código)
+
+Integración: flujos login→MFA→dashboard; recuperación/reset
+
+E2E: escenarios RBAC (Admin, Revisión, Reconocedor, Digitador)
+
+8) Configuración y i18n
+
+Variables (frontend): API_BASE_URL, MFA_PROVIDER, FEATURE_FLAGS (xtf, gdb, audit)
+
+Idioma: es-CO; llaves i18n para todos los textos visibles y errores
+
+9) Notas de integración con tu BD (referencia rápida)
+
+DB: PostgreSQL en localhost:5432, usuario postgres, pass 12345, DB GP_CONES
+
+Conexión a cualquier schema (selector o parámetro de conexión)
+
+El frontend solo necesita conocer el perfil del usuario y permisos; la conexión a schemas la gestiona el backend en función del tenant/proyecto.

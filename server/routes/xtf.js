@@ -1,337 +1,774 @@
 const express = require('express');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const db = require('../config/database');
-const auth = require('../middleware/auth');
-
 const router = express.Router();
+const { authenticateToken, authorizeRole } = require('../middleware/auth');
+const { 
+  upload, 
+  uploadXTF, 
+  validateXTF, 
+  getUploadStatus, 
+  getUploadedData,
+  approveUploadRecords,
+  rejectUploadRecords,
+  getSchemas,
+  getSchemaStats,
+  deleteSchema,
+  integrateSchema,
+  getIntegrationStats,
+  cleanIntegration,
+  getUnifiedPredios,
+  exportXTF
+} = require('../controllers/xtfController');
+const { canExportXTF } = require('../middleware/auth');
 
-// Configurar multer para subida de archivos
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadPath = path.join(__dirname, '../uploads/xtf');
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Middleware de autenticación para todas las rutas
+router.use(authenticateToken);
 
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 50 * 1024 * 1024 // 50MB
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/xml' || file.originalname.toLowerCase().endsWith('.xtf')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Solo se permiten archivos XTF'), false);
-    }
-  }
-});
+// Historia 5: Carga de archivos XTF
+// POST /api/xtf/upload
+router.post('/upload', 
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  upload.single('xtf_file'),
+  uploadXTF
+);
 
-// @route   POST /api/xtf/upload
-// @desc    Subir archivo XTF
-// @access  Private
-router.post('/upload', auth, upload.single('file'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No se proporcionó ningún archivo' });
-    }
+// Historia 6: Validación de modelos ILI
+// POST /api/xtf/validate
+router.post('/validate',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  upload.single('xtf_file'),
+  validateXTF
+);
 
-    const fileData = {
-      filename: req.file.originalname,
-      filepath: req.file.path,
-      size: req.file.size,
-      mimetype: req.file.mimetype,
-      status: 'pending',
-      progress: 0,
-      created_by: req.user.id
-    };
+// Historia 8: Visualización del proceso de carga
+// GET /api/xtf/upload/:upload_id/status
+router.get('/upload/:upload_id/status',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  getUploadStatus
+);
 
-    const query = `
-      INSERT INTO xtf_uploads (filename, filepath, size, mimetype, status, progress, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *
-    `;
+// Historia 9: Revisión de datos cargados
+// GET /api/xtf/upload/:upload_id/data
+router.get('/upload/:upload_id/data',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  getUploadedData
+);
 
-    const result = await db.query(query, [
-      fileData.filename,
-      fileData.filepath,
-      fileData.size,
-      fileData.mimetype,
-      fileData.status,
-      fileData.progress,
-      fileData.created_by
-    ]);
+// POST /api/xtf/upload/:upload_id/approve - Aprobar registros
+router.post('/upload/:upload_id/approve',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  approveUploadRecords
+);
 
-    res.json({
-      success: true,
-      message: 'Archivo XTF subido correctamente',
-      file: result.rows[0]
-    });
+// POST /api/xtf/upload/:upload_id/reject - Rechazar registros
+router.post('/upload/:upload_id/reject',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  rejectUploadRecords
+);
 
-  } catch (err) {
-    console.error('Error al subir archivo XTF:', err);
-    res.status(500).json({ error: 'Error al subir archivo' });
-  }
-});
+// Ruta para obtener información de archivos XTF cargados
+// GET /api/xtf/uploads
+router.get('/uploads',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  async (req, res) => {
+    try {
+      const db = require('../config/database');
+      const { query } = db;
+      const { page = 1, limit = 20, status } = req.query;
+      const offset = (page - 1) * limit;
 
-// @route   GET /api/xtf
-// @desc    Obtener lista de archivos XTF
-// @access  Private
-router.get('/', auth, async (req, res) => {
-  try {
-    const { page = 1, limit = 10 } = req.query;
-    const offset = (page - 1) * limit;
+      let whereClause = '';
+      let queryParams = [limit, offset];
+      let paramIndex = 3;
 
-    const countQuery = 'SELECT COUNT(*) as total FROM xtf_uploads';
-    const countResult = await db.query(countQuery);
-    const total = parseInt(countResult.rows[0].total);
-
-    const query = `
-      SELECT 
-        xt.*,
-        u.username as created_by_name
-      FROM xtf_uploads xt
-      LEFT JOIN users u ON xt.created_by = u.id
-      ORDER BY xt.created_at DESC
-      LIMIT $1 OFFSET $2
-    `;
-
-    const result = await db.query(query, [limit, offset]);
-
-    res.json({
-      success: true,
-      files: result.rows,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        totalPages: Math.ceil(total / limit)
+      if (status) {
+        whereClause = `WHERE status = $${paramIndex}`;
+        queryParams.splice(2, 0, status);
+        paramIndex++;
       }
-    });
 
-  } catch (err) {
-    console.error('Error al obtener archivos XTF:', err);
-    res.status(500).json({ error: 'Error del servidor' });
-  }
-});
+      // Obtener uploads con información del usuario
+      const result = await query(`
+        SELECT 
+          xf.id,
+          xf.original_filename as filename,
+          xf.xtf_type as model_type,
+          xf.status,
+          xf.records_processed as entities_count,
+          xf.file_size,
+          xf.created_at as uploaded_at,
+          xf.processed_at,
+          u.username as uploaded_by,
+          u.full_name as uploaded_by_name
+        FROM xtf_files xf
+        LEFT JOIN users u ON xf.uploaded_by = u.id
+        ${whereClause}
+        ORDER BY xf.created_at DESC
+        LIMIT $1 OFFSET $2
+      `, queryParams);
 
-// @route   GET /api/xtf/:id
-// @desc    Obtener archivo XTF específico
-// @access  Private
-router.get('/:id', auth, async (req, res) => {
-  try {
-    const { id } = req.params;
+      // Contar total
+      const countResult = await query(`
+        SELECT COUNT(*) as total
+        FROM xtf_files
+        ${whereClause || ''}
+      `, status ? [status] : []);
 
-    const query = `
-      SELECT 
-        xt.*,
-        u.username as created_by_name
-      FROM xtf_uploads xt
-      LEFT JOIN users u ON xt.created_by = u.id
-      WHERE xt.id = $1
-    `;
+      const uploads = result.rows.map(upload => ({
+        id: upload.id,
+        filename: upload.filename,
+        model_type: upload.model_type === 'Antioquia Extendido' ? 'antioquia' : 'igac',
+        status: upload.status.toLowerCase(),
+        uploaded_at: upload.uploaded_at,
+        processed_at: upload.processed_at,
+        uploaded_by: upload.uploaded_by,
+        uploaded_by_name: upload.uploaded_by_name,
+        entities_count: upload.entities_count || 0,
+        file_size: `${(upload.file_size / 1024 / 1024).toFixed(2)}MB`
+      }));
 
-    const result = await db.query(query, [id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Archivo no encontrado' });
+      res.json({
+        success: true,
+        data: uploads,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: parseInt(countResult.rows[0].total),
+          pages: Math.ceil(countResult.rows[0].total / limit)
+        }
+      });
+    } catch (error) {
+      console.error('Error obteniendo listado de uploads:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor',
+        error: error.message
+      });
     }
-
-    res.json({
-      success: true,
-      file: result.rows[0]
-    });
-
-  } catch (err) {
-    console.error('Error al obtener archivo XTF:', err);
-    res.status(500).json({ error: 'Error del servidor' });
   }
-});
+);
 
-// @route   POST /api/xtf/:id/validate
-// @desc    Validar archivo XTF
-// @access  Private
-router.post('/:id/validate', auth, async (req, res) => {
-  try {
-    const { id } = req.params;
+// Ruta para obtener estadísticas de archivos XTF
+// GET /api/xtf/stats
+router.get('/stats',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  async (req, res) => {
+    try {
+      const db = require('../config/database');
+      const { query } = db;
+      
+      // Estadísticas generales
+      const totalUploadsResult = await query(`
+        SELECT COUNT(*) as total
+        FROM xtf_files
+      `);
+      
+      const totalEntitiesResult = await query(`
+        SELECT 
+          COALESCE(SUM(records_imported), 0) as total_entities,
+          COALESCE(SUM(records_processed), 0) as total_processed,
+          COALESCE(SUM(records_errors), 0) as total_errors
+        FROM xtf_files
+        WHERE status = 'Procesado'
+      `);
+      
+      // Estadísticas por modelo
+      const byModelResult = await query(`
+        SELECT 
+          CASE 
+            WHEN xtf_type = 'Antioquia Extendido' THEN 'antioquia'
+            WHEN xtf_type = 'IGAC 1.0' THEN 'igac'
+            ELSE 'other'
+          END as model,
+          COUNT(*) as count
+        FROM xtf_files
+        GROUP BY xtf_type
+      `);
+      
+      const byModel = {};
+      byModelResult.rows.forEach(row => {
+        byModel[row.model] = parseInt(row.count);
+      });
+      
+      // Estadísticas por estado
+      const byStatusResult = await query(`
+        SELECT 
+          LOWER(status) as status,
+          COUNT(*) as count
+        FROM xtf_files
+        GROUP BY status
+      `);
+      
+      const byStatus = {};
+      byStatusResult.rows.forEach(row => {
+        byStatus[row.status] = parseInt(row.count);
+      });
+      
+      // Estadísticas por mes (últimos 12 meses)
+      const byMonthResult = await query(`
+        SELECT 
+          TO_CHAR(created_at, 'YYYY-MM') as month,
+          COUNT(*) as count
+        FROM xtf_files
+        WHERE created_at >= NOW() - INTERVAL '12 months'
+        GROUP BY TO_CHAR(created_at, 'YYYY-MM')
+        ORDER BY month DESC
+      `);
+      
+      const byMonth = {};
+      byMonthResult.rows.forEach(row => {
+        byMonth[row.month] = parseInt(row.count);
+      });
+      
+      // Estadísticas de tamaño de archivos
+      const fileSizeStatsResult = await query(`
+        SELECT 
+          COALESCE(SUM(file_size), 0) as total_size,
+          COALESCE(AVG(file_size), 0) as avg_size,
+          COALESCE(MAX(file_size), 0) as max_size,
+          COALESCE(MIN(file_size), 0) as min_size
+        FROM xtf_files
+      `);
+      
+      const fileSizeStats = fileSizeStatsResult.rows[0];
+      
+      // Estadísticas de usuarios que han cargado archivos
+      const byUserResult = await query(`
+        SELECT 
+          u.username,
+          u.full_name,
+          COUNT(xf.id) as upload_count,
+          COALESCE(SUM(xf.records_imported), 0) as total_imported
+        FROM xtf_files xf
+        LEFT JOIN users u ON xf.uploaded_by = u.id
+        GROUP BY u.id, u.username, u.full_name
+        ORDER BY upload_count DESC
+        LIMIT 10
+      `);
+      
+      const stats = {
+        total_uploads: parseInt(totalUploadsResult.rows[0].total),
+        total_entities: parseInt(totalEntitiesResult.rows[0].total_entities),
+        total_processed: parseInt(totalEntitiesResult.rows[0].total_processed),
+        total_errors: parseInt(totalEntitiesResult.rows[0].total_errors),
+        by_model: byModel,
+        by_status: byStatus,
+        by_month: byMonth,
+        file_size: {
+          total_mb: (parseFloat(fileSizeStats.total_size) / 1024 / 1024).toFixed(2),
+          avg_mb: (parseFloat(fileSizeStats.avg_size) / 1024 / 1024).toFixed(2),
+          max_mb: (parseFloat(fileSizeStats.max_size) / 1024 / 1024).toFixed(2),
+          min_mb: (parseFloat(fileSizeStats.min_size) / 1024 / 1024).toFixed(2)
+        },
+        top_users: byUserResult.rows.map(row => ({
+          username: row.username,
+          full_name: row.full_name,
+          upload_count: parseInt(row.upload_count),
+          total_imported: parseInt(row.total_imported)
+        }))
+      };
 
-    // Obtener archivo
-    const fileQuery = 'SELECT * FROM xtf_uploads WHERE id = $1';
-    const fileResult = await db.query(fileQuery, [id]);
-
-    if (fileResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Archivo no encontrado' });
+      res.json({
+        success: true,
+        data: stats
+      });
+    } catch (error) {
+      console.error('Error obteniendo estadísticas XTF:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor',
+        error: error.message
+      });
     }
-
-    const file = fileResult.rows[0];
-
-    // Simular validación contra el modelo LADM-COL
-    const validationResults = await simulateValidation(file);
-
-    // Actualizar estado del archivo
-    await db.query(
-      'UPDATE xtf_uploads SET status = $1, validation_results = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
-      [validationResults.valid ? 'validated' : 'error', JSON.stringify(validationResults), id]
-    );
-
-    res.json({
-      success: true,
-      message: 'Validación completada',
-      ...validationResults
-    });
-
-  } catch (err) {
-    console.error('Error en validación:', err);
-    res.status(500).json({ error: 'Error en validación' });
   }
-});
+);
 
-// @route   POST /api/xtf/:id/process
-// @desc    Procesar archivo XTF
-// @access  Private
-router.post('/:id/process', auth, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // Obtener archivo
-    const fileQuery = 'SELECT * FROM xtf_uploads WHERE id = $1';
-    const fileResult = await db.query(fileQuery, [id]);
-
-    if (fileResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Archivo no encontrado' });
+// Ruta para descargar archivo XTF original
+// GET /api/xtf/upload/:upload_id/download
+router.get('/upload/:upload_id/download',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  async (req, res) => {
+    try {
+      const { upload_id } = req.params;
+      const db = require('../config/database');
+      const { query } = db;
+      const fs = require('fs').promises;
+      const path = require('path');
+      
+      // Obtener información del archivo
+      const fileResult = await query(`
+        SELECT file_path, original_filename, filename
+        FROM xtf_files
+        WHERE id = $1
+      `, [upload_id]);
+      
+      if (fileResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Archivo no encontrado'
+        });
+      }
+      
+      const fileInfo = fileResult.rows[0];
+      const filePath = fileInfo.file_path;
+      
+      // Verificar que el archivo existe
+      try {
+        await fs.access(filePath);
+      } catch (error) {
+        return res.status(404).json({
+          success: false,
+          message: 'El archivo físico no existe en el servidor'
+        });
+      }
+      
+      // Obtener estadísticas del archivo
+      const stats = await fs.stat(filePath);
+      
+      // Log de auditoría
+      const { logAuditEvent } = require('../controllers/auditController');
+      await logAuditEvent(req.user.id, 'DESCARGA_XTF', 'XTF', {
+        upload_id: upload_id,
+        filename: fileInfo.original_filename,
+        file_size: stats.size
+      });
+      
+      // Enviar archivo como descarga
+      res.setHeader('Content-Type', 'application/xml');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileInfo.original_filename}"`);
+      res.setHeader('Content-Length', stats.size);
+      
+      const fileStream = require('fs').createReadStream(filePath);
+      fileStream.pipe(res);
+      
+    } catch (error) {
+      console.error('Error descargando archivo:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor',
+        error: error.message
+      });
     }
-
-    const file = fileResult.rows[0];
-
-    // Simular procesamiento
-    const processingResults = await simulateProcessing(file);
-
-    // Actualizar estado del archivo
-    await db.query(
-      'UPDATE xtf_uploads SET status = $1, processing_results = $2, progress = 100, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
-      ['completed', JSON.stringify(processingResults), id]
-    );
-
-    res.json({
-      success: true,
-      message: 'Procesamiento completado',
-      ...processingResults
-    });
-
-  } catch (err) {
-    console.error('Error en procesamiento:', err);
-    res.status(500).json({ error: 'Error en procesamiento' });
   }
-});
+);
 
-// @route   DELETE /api/xtf/:id
-// @desc    Eliminar archivo XTF
-// @access  Private
-router.delete('/:id', auth, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // Obtener archivo
-    const fileQuery = 'SELECT * FROM xtf_uploads WHERE id = $1';
-    const fileResult = await db.query(fileQuery, [id]);
-
-    if (fileResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Archivo no encontrado' });
+// Ruta para eliminar archivo XTF cargado
+// DELETE /api/xtf/upload/:upload_id
+router.delete('/upload/:upload_id',
+  authorizeRole(['Administrador del Sistema']),
+  async (req, res) => {
+    const db = require('../config/database');
+    const { query } = db;
+    const fs = require('fs').promises;
+    const { logAuditEvent } = require('../controllers/auditController');
+    
+    try {
+      const { upload_id } = req.params;
+      
+      // Obtener información del archivo antes de eliminarlo
+      const fileResult = await query(`
+        SELECT file_path, original_filename, schema_name, status
+        FROM xtf_files
+        WHERE id = $1
+      `, [upload_id]);
+      
+      if (fileResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Archivo no encontrado'
+        });
+      }
+      
+      const fileInfo = fileResult.rows[0];
+      
+      // Iniciar transacción para eliminar datos relacionados
+      await query('BEGIN');
+      
+      try {
+        // Eliminar logs de procesamiento asociados (CASCADE debería hacerlo automáticamente)
+        await query(`
+          DELETE FROM xtf_processing_logs
+          WHERE upload_id = $1
+        `, [upload_id]);
+        
+        // Si hay un schema asociado, eliminarlo (opcional - solo si se desea)
+        // Por ahora no eliminamos el schema para preservar datos
+        
+        // Eliminar el archivo físico si existe
+        try {
+          await fs.unlink(fileInfo.file_path);
+        } catch (error) {
+          console.warn(`No se pudo eliminar el archivo físico: ${error.message}`);
+          // Continuar aunque no se pueda eliminar el archivo físico
+        }
+        
+        // Eliminar registro de la base de datos
+        await query(`
+          DELETE FROM xtf_files
+          WHERE id = $1
+        `, [upload_id]);
+        
+        await query('COMMIT');
+        
+        // Log de auditoría
+        await logAuditEvent(req.user.id, 'ELIMINACION_XTF', 'XTF', {
+          upload_id: upload_id,
+          filename: fileInfo.original_filename,
+          schema_name: fileInfo.schema_name,
+          status: fileInfo.status
+        });
+        
+        res.json({
+          success: true,
+          message: `Archivo ${fileInfo.original_filename} eliminado exitosamente`
+        });
+        
+      } catch (error) {
+        await query('ROLLBACK');
+        throw error;
+      }
+      
+    } catch (error) {
+      console.error('Error eliminando archivo:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor',
+        error: error.message
+      });
     }
+  }
+);
 
-    const file = fileResult.rows[0];
-
-    // Eliminar archivo físico
-    if (fs.existsSync(file.filepath)) {
-      fs.unlinkSync(file.filepath);
+// Ruta para reprocesar archivo XTF
+// POST /api/xtf/upload/:upload_id/reprocess
+router.post('/upload/:upload_id/reprocess',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  async (req, res) => {
+    const db = require('../config/database');
+    const { query } = db;
+    const { uploadXTF } = require('../controllers/xtfController');
+    const { logAuditEvent } = require('../controllers/auditController');
+    const iliService = require('../services/iliService');
+    const xtfIntegrationService = require('../services/xtfIntegrationService');
+    
+    try {
+      const { upload_id } = req.params;
+      const { model_type, schema_name } = req.body;
+      
+      // Obtener información del archivo
+      const fileResult = await query(`
+        SELECT file_path, original_filename, xtf_type, schema_name, status
+        FROM xtf_files
+        WHERE id = $1
+      `, [upload_id]);
+      
+      if (fileResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Archivo no encontrado'
+        });
+      }
+      
+      const fileInfo = fileResult.rows[0];
+      
+      // Verificar que el archivo físico existe
+      const fs = require('fs').promises;
+      try {
+        await fs.access(fileInfo.file_path);
+      } catch (error) {
+        return res.status(404).json({
+          success: false,
+          message: 'El archivo físico no existe en el servidor'
+        });
+      }
+      
+      // Actualizar estado a "Validando"
+      await query(`
+        UPDATE xtf_files
+        SET status = 'Validando', processed_at = NULL, error_details = NULL
+        WHERE id = $1
+      `, [upload_id]);
+      
+      // Log de inicio de reprocesamiento
+      await query(`
+        INSERT INTO xtf_processing_logs (upload_id, log_level, message, details)
+        VALUES ($1, 'INFO', 'Iniciando reprocesamiento del archivo XTF', '{}'::jsonb)
+      `, [upload_id]);
+      
+      // Log de auditoría
+      await logAuditEvent(req.user.id, 'REPROCESAMIENTO_XTF', 'XTF', {
+        upload_id: upload_id,
+        filename: fileInfo.original_filename,
+        previous_status: fileInfo.status
+      });
+      
+      // Reprocesar en segundo plano (asíncrono)
+      // Por ahora, ejecutamos el procesamiento de forma síncrona
+      // En producción, esto debería ir a una cola de trabajos
+      (async () => {
+        try {
+          // Determinar tipo de modelo
+          const finalModelType = model_type || (fileInfo.xtf_type === 'Antioquia Extendido' ? 'antioquia' : 'igac');
+          const finalSchemaName = schema_name || fileInfo.schema_name || `xtf_${Date.now()}`;
+          
+          // Validar estructura XML
+          const xmlValidation = await iliService.validateXMLStructure(fileInfo.file_path);
+          if (!xmlValidation.isValid) {
+            await query(`
+              UPDATE xtf_files
+              SET status = 'Error', error_details = $1
+              WHERE id = $2
+            `, [JSON.stringify(xmlValidation.errors), upload_id]);
+            
+            await query(`
+              INSERT INTO xtf_processing_logs (upload_id, log_level, message, details)
+              VALUES ($1, 'ERROR', 'Error en validación XML', $2::jsonb)
+            `, [upload_id, JSON.stringify({ errors: xmlValidation.errors })]);
+            return;
+          }
+          
+          await query(`
+            INSERT INTO xtf_processing_logs (upload_id, log_level, message)
+            VALUES ($1, 'INFO', 'Validación XML completada exitosamente')
+          `, [upload_id]);
+          
+          // Validar contra modelo ILI
+          const iliValidation = await iliService.validateAgainstILIModel(
+            fileInfo.file_path,
+            finalModelType
+          );
+          
+          if (!iliValidation.isValid) {
+            await query(`
+              UPDATE xtf_files
+              SET status = 'Error', error_details = $1
+              WHERE id = $2
+            `, [JSON.stringify(iliValidation.errors), upload_id]);
+            
+            await query(`
+              INSERT INTO xtf_processing_logs (upload_id, log_level, message, details)
+              VALUES ($1, 'ERROR', 'Error en validación ILI', $2::jsonb)
+            `, [upload_id, JSON.stringify({ errors: iliValidation.errors })]);
+            return;
+          }
+          
+          await query(`
+            INSERT INTO xtf_processing_logs (upload_id, log_level, message)
+            VALUES ($1, 'INFO', 'Validación ILI completada exitosamente')
+          `, [upload_id]);
+          
+          // Importar a PostgreSQL usando iliService
+          const importResult = await iliService.importXTFToPostgreSQL(
+            fileInfo.file_path,
+            finalModelType,
+            finalSchemaName
+          );
+          
+          await query(`
+            INSERT INTO xtf_processing_logs (upload_id, log_level, message, details)
+            VALUES ($1, 'INFO', 'Importación a PostgreSQL completada', $2::jsonb)
+          `, [upload_id, JSON.stringify(importResult)]);
+          
+          // Integrar al schema principal
+          const integrationResult = await xtfIntegrationService.integrateSchema(finalSchemaName);
+          
+          await query(`
+            INSERT INTO xtf_processing_logs (upload_id, log_level, message, details)
+            VALUES ($1, 'SUCCESS', 'Integración al schema principal completada', $2::jsonb)
+          `, [upload_id, JSON.stringify(integrationResult)]);
+          
+          // Actualizar estado final
+          await query(`
+            UPDATE xtf_files
+            SET status = 'Procesado',
+                processed_at = CURRENT_TIMESTAMP,
+                records_processed = $1,
+                records_imported = $2,
+                records_errors = $3,
+                schema_name = $4
+            WHERE id = $5
+          `, [
+            importResult.totalRecords || 0,
+            integrationResult.importedRecords || 0,
+            importResult.errorRecords || 0,
+            finalSchemaName,
+            upload_id
+          ]);
+          
+        } catch (error) {
+          console.error('Error en reprocesamiento asíncrono:', error);
+          await query(`
+            UPDATE xtf_files
+            SET status = 'Error', error_details = $1
+            WHERE id = $2
+          `, [error.message, upload_id]);
+          
+          await query(`
+            INSERT INTO xtf_processing_logs (upload_id, log_level, message, details)
+            VALUES ($1, 'ERROR', 'Error durante reprocesamiento', $2::jsonb)
+          `, [upload_id, JSON.stringify({ error: error.message })]);
+        }
+      })();
+      
+      res.json({
+        success: true,
+        message: `Archivo ${fileInfo.original_filename} en cola para reprocesamiento`,
+        upload_id: upload_id
+      });
+      
+    } catch (error) {
+      console.error('Error reprocesando archivo:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor',
+        error: error.message
+      });
     }
-
-    // Eliminar registro de la base de datos
-    await db.query('DELETE FROM xtf_uploads WHERE id = $1', [id]);
-
-    res.json({
-      success: true,
-      message: 'Archivo eliminado correctamente'
-    });
-
-  } catch (err) {
-    console.error('Error al eliminar archivo:', err);
-    res.status(500).json({ error: 'Error al eliminar archivo' });
   }
-});
+);
 
-// Función para simular validación
-async function simulateValidation(file) {
-  // Simular tiempo de validación
-  await new Promise(resolve => setTimeout(resolve, 2000));
-
-  // Simular validación contra modelo LADM-COL
-  const isValid = Math.random() > 0.2; // 80% de probabilidad de ser válido
-
-  const errors = [];
-  const warnings = [];
-
-  if (!isValid) {
-    errors.push({
-      message: 'Error en la estructura del archivo XTF',
-      location: 'Línea 15',
-      severity: 'error'
-    });
-    errors.push({
-      message: 'Geometría inválida en predio ID 12345',
-      location: 'Línea 45',
-      severity: 'error'
-    });
+// Ruta para obtener logs de procesamiento
+// GET /api/xtf/upload/:upload_id/logs
+router.get('/upload/:upload_id/logs',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  async (req, res) => {
+    try {
+      const { upload_id } = req.params;
+      const { page = 1, limit = 100, level } = req.query;
+      const db = require('../config/database');
+      const { query } = db;
+      
+      // Verificar que el upload existe
+      const uploadCheck = await query(`
+        SELECT id, original_filename
+        FROM xtf_files
+        WHERE id = $1
+      `, [upload_id]);
+      
+      if (uploadCheck.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Upload no encontrado'
+        });
+      }
+      
+      // Construir query de logs
+      const offset = (page - 1) * limit;
+      let whereConditions = ['upload_id = $1'];
+      let queryParams = [upload_id];
+      let paramIndex = 2;
+      
+      if (level) {
+        whereConditions.push(`log_level = $${paramIndex}`);
+        queryParams.push(level);
+        paramIndex++;
+      }
+      
+      const whereClause = whereConditions.join(' AND ');
+      
+      // Obtener logs
+      const logsResult = await query(`
+        SELECT 
+          id,
+          log_level as level,
+          message,
+          details,
+          created_at as timestamp
+        FROM xtf_processing_logs
+        WHERE ${whereClause}
+        ORDER BY created_at DESC
+        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+      `, [...queryParams, limit, offset]);
+      
+      // Contar total
+      const countResult = await query(`
+        SELECT COUNT(*) as total
+        FROM xtf_processing_logs
+        WHERE ${whereClause}
+      `, queryParams);
+      
+      const logs = logsResult.rows.map(log => ({
+        id: log.id,
+        level: log.level,
+        message: log.message,
+        details: log.details,
+        timestamp: log.timestamp
+      }));
+      
+      res.json({
+        success: true,
+        data: logs,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: parseInt(countResult.rows[0].total),
+          pages: Math.ceil(countResult.rows[0].total / limit)
+        },
+        upload_info: {
+          id: upload_id,
+          filename: uploadCheck.rows[0].original_filename
+        }
+      });
+    } catch (error) {
+      console.error('Error obteniendo logs:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor',
+        error: error.message
+      });
+    }
   }
+);
 
-  if (Math.random() > 0.5) {
-    warnings.push({
-      message: 'Advertencia: Coordenadas fuera del rango esperado',
-      location: 'Línea 23',
-      severity: 'warning'
-    });
-  }
+// Gestión de Schemas
+// GET /api/xtf/schemas - Obtener lista de schemas
+router.get('/schemas',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  getSchemas
+);
 
-  return {
-    valid: isValid,
-    errors: errors,
-    warnings: warnings,
-    validation_time: Math.random() * 5 + 1, // 1-6 segundos
-    model_used: 'LADM-COL Antioquia Extension',
-    total_elements: Math.floor(Math.random() * 1000) + 100,
-    valid_elements: Math.floor(Math.random() * 950) + 50
-  };
-}
+// GET /api/xtf/schemas/:schema_name/stats - Obtener estadísticas de un schema
+router.get('/schemas/:schema_name/stats',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  getSchemaStats
+);
 
-// Función para simular procesamiento
-async function simulateProcessing(file) {
-  // Simular tiempo de procesamiento
-  await new Promise(resolve => setTimeout(resolve, 3000));
+// DELETE /api/xtf/schemas/:schema_name - Eliminar schema
+router.delete('/schemas/:schema_name',
+  authorizeRole(['Administrador del Sistema']),
+  deleteSchema
+);
 
-  const prediosProcessed = Math.floor(Math.random() * 500) + 50;
-  const construccionesProcessed = Math.floor(Math.random() * 300) + 20;
-  const terrenosProcessed = Math.floor(Math.random() * 200) + 10;
+// Integración de Schemas
+// POST /api/xtf/schemas/:schema_name/integrate - Integrar schema al principal
+router.post('/schemas/:schema_name/integrate',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  integrateSchema
+);
 
-  return {
-    predios_processed: prediosProcessed,
-    construcciones_processed: construccionesProcessed,
-    terrenos_processed: terrenosProcessed,
-    processing_time: Math.random() * 10 + 5, // 5-15 segundos
-    success_rate: Math.random() * 20 + 80, // 80-100%
-    errors_encountered: Math.floor(Math.random() * 10),
-    warnings_generated: Math.floor(Math.random() * 20),
-    database_tables_updated: ['predios', 'construcciones', 'terrenos', 'geometrias'],
-    spatial_indexes_created: Math.floor(Math.random() * 5) + 1
-  };
-}
+// GET /api/xtf/schemas/:schema_name/integration/stats - Estadísticas de integración
+router.get('/schemas/:schema_name/integration/stats',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  getIntegrationStats
+);
 
-module.exports = router; 
+// DELETE /api/xtf/schemas/:schema_name/integration - Limpiar integración
+router.delete('/schemas/:schema_name/integration',
+  authorizeRole(['Administrador del Sistema']),
+  cleanIntegration
+);
+
+// Predios Unificados
+// GET /api/xtf/predios/unified - Obtener predios unificados (app + XTF)
+router.get('/predios/unified',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad', 'Reconocedor Predial']),
+  getUnifiedPredios
+);
+
+// Exportar predios a formato XTF
+// GET /api/xtf/export - Exportar predios a formato XTF
+router.get('/export',
+  canExportXTF,
+  exportXTF
+);
+
+module.exports = router;

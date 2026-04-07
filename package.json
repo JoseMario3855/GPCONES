@@ -1,32 +1,37 @@
 {
-  "name": "gp-cones-catastral-system",
+  "name": "gp-cones-backend",
   "version": "1.0.0",
-  "description": "Sistema Catastral GP Cones - Node.js + React + PostgreSQL",
+  "description": "Backend para el sistema de catastro GP Cones",
   "main": "server/index.js",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "server": "cd server && npm run dev",
-    "client": "cd client && npm start",
-    "build": "cd client && npm run build",
-    "install-all": "npm install && cd server && npm install && cd ../client && npm install",
-    "start": "cd server && npm start"
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js",
+    "test": "jest"
   },
   "keywords": [
-    "catastral",
-    "gis",
-    "igac",
-    "antioquia",
-    "xtf",
-    "ladm-col"
+    "catastro",
+    "predios",
+    "backend",
+    "express",
+    "postgresql"
   ],
   "author": "GP Cones Team",
   "license": "MIT",
-  "devDependencies": {
-    "concurrently": "^8.2.2"
-  },
   "dependencies": {
-    "bcryptjs": "^3.0.2",
-    "dotenv": "^17.2.1",
-    "pg": "^8.16.3"
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.16.3",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2"
   }
 }

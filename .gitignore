@@ -1,94 +1,17 @@
-# Dependencies
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+node_modules
 
-# Environment variables
+# Variables de entorno locales (cada dev tiene su .env; no versionar)
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
+server/.env
+FRONT/.env.local
 
-# Build outputs
-/build
-/dist
-/client/build
+# Subidas y temporales del servidor (no versionar)
+server/uploads/
+
+# Datos catastrales pesados (XTF suele superar el límite de GitHub por archivo)
+*.xtf
 
 # Logs
-logs
 *.log
-
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage directory used by tools like istanbul
-coverage/
-
-# nyc test coverage
-.nyc_output
-
-# Dependency directories
-jspm_packages/
-
-# Optional npm cache directory
-.npm
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# dotenv environment variables file
-.env
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Temporary files
-*.tmp
-*.temp
-
-# Upload directories
-server/uploads/
-uploads/
-
-# Database files
-*.db
-*.sqlite
-
-# Test files
-test_db_connection.js
-explore_antioquia_schema.js
-generate_xtf_structure.js
-generate_ili_model.js
-check_services.js
-init_database.js
-setup.js
-extract_pdf_text.py
-
-# Generated files
-antioquia_xtf_structure.xml
-LADM_COL_Antioquia.ili
-ili2c_config.xml

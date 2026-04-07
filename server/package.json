@@ -1,29 +1,44 @@
 {
-  "name": "gp-cones-server",
+  "name": "gpcones-server",
   "version": "1.0.0",
-  "description": "Backend del Sistema Catastral GP Cones",
+  "description": "Backend del Sistema de Catastro Integral GPCONES",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "jest"
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
+  "keywords": [
+    "catastro",
+    "gis",
+    "postgis",
+    "xtf",
+    "igac",
+    "antioquia"
+  ],
+  "author": "BY CONESTUDIOS",
+  "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2",
-    "cors": "^2.8.5",
-    "helmet": "^7.1.0",
-    "dotenv": "^16.3.1",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
-    "pg": "^8.11.3",
-    "pg-pool": "^3.6.1",
-    "multer": "^1.4.5-lts.1",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
     "express-validator": "^7.0.1",
-    "compression": "^1.7.4",
-    "morgan": "^1.10.0"
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^7.0.6",
+    "pg": "^8.11.3",
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
-} 
+}

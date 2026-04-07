@@ -1,0 +1,56 @@
+
+Formas de cargar un archivo .xtf a PostgreSQL con sus archivos .ili
+=================================================================
+
+1) Usando ili2pg / ili2db (recomendado)
+---------------------------------------
+Herramienta oficial para crear el esquema desde el .ili y luego importar el .xtf a PostGIS. Requiere Java.
+
+Flujo típico:
+1. Crear el esquema en Postgres a partir del modelo .ili
+-------------------------------------------------------
+java -jar ili2pg.jar   --dbhost localhost --dbport 5432 --dbdatabase GP_CONES   --dbusr postgres --dbpwd 12345   --dbschema ladm_antioquia   --models LADM_COL_ExtAntioquia   --defaultSrsCode 3116   --nameByTopic --createFk --createGeomIdx --createEnumTabs   --schemaimport
+
+2. Importar los datos del .xtf al esquema creado
+------------------------------------------------
+java -jar ili2pg.jar   --dbhost localhost --dbport 5432 --dbdatabase GP_CONES   --dbusr postgres --dbpwd 12345   --dbschema ladm_antioquia   --models LADM_COL_ExtAntioquia   --dataset lote_2025_08_14   --import mydata.xtf
+
+Notas útiles: 
+- --nameByTopic organiza tablas por tema del modelo.
+- --createFk llaves foráneas.
+- --createEnumTabs crea tablas para dominios enumerados.
+- --createGeomIdx índices espaciales.
+- --dataset etiqueta la carga.
+
+2) Usando QGIS + Model Baker (interfaz gráfica)
+-----------------------------------------------
+Plugin que llama internamente a ili2db: crea el esquema desde el .ili, importa .xtf y genera un proyecto QGIS con capas y relaciones.
+
+Ventajas: configuración guiada, validación integrada, ideal para usuarios no técnicos.
+
+3) Usando GDAL/OGR (ogr2ogr) con driver INTERLIS
+------------------------------------------------
+GDAL puede leer INTERLIS y escribir en PostGIS (ogr2ogr).
+
+Ejemplo básico:
+ogr2ogr -f PostgreSQL "PG:host=localhost port=5432 dbname=GP_CONES user=postgres password=12345"   mydata.xtf -nlt PROMOTE_TO_MULTI -lco GEOMETRY_NAME=geom
+
+Nota: ogr2ogr lee XTF pero la creación de esquema fiel al modelo es más precisa con ili2pg.
+
+4) Validación previa con ilivalidator
+-------------------------------------
+Antes de importar, valida el .xtf contra el .ili para asegurar que cumple el modelo. Requiere Java.
+
+Ejemplo:
+java -jar ilivalidator.jar --modeldir ".;C:/modelos" --models LADM_COL_ExtAntioquia mydata.xtf
+
+5) Otras opciones
+-----------------
+- FME (ili2fme): lector/escritor INTERLIS comercial, permite validar con ilivalidator y transformar a PostGIS.
+
+Recomendación para GP_CONES en localhost:5432
+----------------------------------------------
+1. Valida el XTF con ilivalidator.
+2. Crea el esquema con ili2pg usando tu .ili (modelo IGAC 1.0 o Extendido Antioquia).
+3. Importa el .xtf con ili2pg (opción --import + --dataset).
+4. Opcional: Usa QGIS Model Baker sobre ese esquema para inspección/edición.

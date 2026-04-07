@@ -1,0 +1,184 @@
+Descripción del Proyecto – Sistema GPCONES
+1.Propósito del Proyecto
+El sistema GPCONES será una plataforma catastral integral diseñada para modernizar y optimizar los procesos de levantamiento predial, consolidación y validación de información catastral. Su propósito principal es garantizar que la información física y jurídica de los predios se capture de forma eficiente en campo, se valide en oficina y se exporte cumpliendo con los estándares técnicos exigidos por el Instituto Geográfico Agustín Codazzi (IGAC) y el Gestor Catastral de Antioquia.
+2. Alcance del Proyecto
+Captura de datos en campo mediante el Módulo de Reconocimiento Predial, con recolección de información física y jurídica.
+Validación y corrección en oficina a través del Módulo de Trabajo de Oficina, donde se revisará y ajustará la información capturada.
+Exportación de información en formatos:
+•	XTF Modelo Extendido Antioquia.
+•	XTF 1.0 IGAC.
+•	Ficha Predial lista para carga en el modelo correspondiente.
+•	Compatibilidad con archivos GDB, asegurando la correcta exportación de datos hacia formatos XTF.
+•	permitir realizar la carga de los archivos XTF Modelo Extendido Antioquia 2.0 y el XTF 1.0 IGAC
+3. Usuarios y Roles Principales
+•	Reconocedor Predial: Captura datos físicos y jurídicos en terreno.
+•	Analista Catastral: Valida, corrige y aprueba la información desde la oficina.
+•	Administrador del Sistema: Configura la plataforma, gestiona usuarios y controla los procesos de exportación.
+4. Beneficios Esperados
+•	Reducción de errores de transcripción y pérdida de datos.
+•	Estandarización de la información según normativas catastrales.
+•	Mayor eficiencia en los tiempos de levantamiento y entrega de información.
+•	Integración fluida entre trabajo de campo y procesos de oficina.
+5. Características Técnicas Relevantes
+•	Soporte para formatos XTF y GDB.
+•	Integración con bases de datos espaciales.
+•	Acceso desde dispositivos móviles y de escritorio.
+•	Interfaz intuitiva y adaptable a diferentes perfiles de usuario.
+•	Herramientas de desarrollo: Node.js + React
+6. Información de Base de Datos
+El sistema GPCONES utilizará como motor de base de datos PostgreSQL con la siguiente configuración:
+•	Servidor: LocalHost
+•	Puerto: 5432
+•	Usuario: postgres
+•	Contraseña: 12345
+•	Base de Datos: GP_CONES
+•	Conexión: El sistema debe permitir conectarse a cualquier schema que se tenga disponible.
+7. Importación/Exportación robusta
+o	Historia: Validación previa a exportación XTF
+Como revisor, quiero un pre-check antes de exportar, para evitar rechazos.
+o	Historia: Reintentos y cola de procesamiento
+Como admin, quiero colas y reintentos para cargas pesadas, para resiliencia.
+o	Historia: Perfiles de exportación
+Como admin, quiero guardar perfiles IGAC/Antioquia, para reproducibilidad
+
+
+
+
+
+
+Módulo de Autenticación y Seguridad
+El sistema contará con un módulo de administración de usuarios y control de acceso que garantice la autenticación segura, la gestión de identidades y la autorización basada en roles, protegiendo la información física y jurídica de los predios.
+•	Roles definidos:
+•	Administrador del Sistema: Crea, edita y desactiva usuarios, asigna roles, gestiona parámetros de seguridad y políticas. Puede exportar/cargar XTF y GDB en cualquier momento.
+•	Revisión de Calidad: Consulta, valida información y aprueba/rechaza correcciones. Puede exportar XTF solo de conjuntos/predios validados y cargar XTF para revisión. Puede preparar y verificar GDB.
+•	Reconocedor Predial: Captura y actualiza información en campo según permisos asignados. Acceso solo de lectura a GDB.
+•	Digitador Alfanumérico: Ingresa y corrige datos alfanuméricos según permisos asignados. Acceso solo de lectura a GDB.
+Funcionalidades principales:
+2.	Autenticación de usuarios
+o	Inicio de sesión con usuario y contraseña.
+o	Opción de segundo factor de autenticación (MFA).
+o	Bloqueo temporal por múltiples intentos fallidos.
+o	Cierre de sesión manual y por inactividad.
+
+
+3.	Gestión de usuarios y roles
+o	Alta, baja y edición de usuarios; activación/desactivación sin pérdida de histórico.
+o	Restablecimiento de contraseña con enlace seguro y expiración.
+o	Asignación de permisos específicos por rol y módulo.
+4.	Autorización y control de accesos (RBAC)
+o	Control de acceso por rol a nivel de módulo y operación (CRUD).
+o	Exportar XTF:
+	Administrador del Sistema → siempre permitido.
+	Revisión de Calidad → permitido solo para conjuntos/predios validados.
+	Reconocedor/Digitador → no permitido.
+o	Cargar XTF:
+	Administrador del Sistema → siempre permitido.
+	Revisión de Calidad → permitido para revisión/integración.
+	Reconocedor/Digitador → no permitido.
+o	Cargar/Preparar GDB:
+	Administrador del Sistema → permitido.
+	Revisión de Calidad → permitido para verificación.
+	Reconocedor/Digitador → solo lectura.
+5.	Políticas de seguridad
+o	Contraseñas con requisitos de complejidad y longitud mínima.
+o	Caducidad configurable de contraseñas y de sesiones.
+o	Limitación opcional de sesiones simultáneas.
+o	Restricción por IP/listas permitidas para operaciones críticas (opcional).
+6.	Auditoría y trazabilidad
+o	Registro de eventos: inicio/cierre de sesión, intentos fallidos, creación/edición de usuarios, cambios de roles.
+o	Registro de eventos críticos: exportaciones/cargas XTF, cargas/lecturas de GDB.
+o	Detalle: usuario, fecha/hora, acción, módulo, estado previo/posterior, resumen de validaciones.
+7.	Protección de datos
+o	Hash de contraseñas con algoritmos robustos (bcrypt o argon2).
+o	Transmisión bajo HTTPS/TLS; tokens/sesiones con expiración y revocación.
+o	Minimización de datos visibles según rol.
+o	Cumplimiento Ley 1581 de 2012 y buenas prácticas ISO 27001.
+8.	Reglas de negocio y calidad de datos
+o	Historia: Catálogos y dominios controlados
+Como administrador, quiero gestionar listas de valores (tipos de vía, destinos económicos, servidumbres, etc.), para que el diligenciamiento sea consistente.
+o	Historia: Reglas de validación alfanumérica
+Como analista, quiero validaciones de formato y obligatoriedad, para prevenir errores.
+o	Historia: Reglas espaciales/topológicas
+Como analista GIS, quiero validar no-solapes, no-huecos y tolerancias de snapping, para garantizar calidad geométrica.
+
+
+
+
+Historias de Usuario – Módulo de Autenticación y Seguridad
+Historia 1: Recuperación de contraseña 
+Como usuario registrado, quiero poder recuperar mi contraseña, para que no pierda el acceso al sistema en caso de olvido.
+Criterios de aceptación:
+•	Envío de enlace de restablecimiento por correo con expiración (ej. 30 min).
+•	Solicitud de nueva contraseña que cumpla con la política definida.
+•	Bloqueo de enlaces caducados o ya usados.
+Historia 2: Control de roles 
+Como administrador, quiero asignar roles y permisos, para que cada usuario acceda solo a las funcionalidades permitidas.
+Criterios de aceptación:
+•	Los roles disponibles: Administrador del Sistema, Revisión de Calidad, Reconocedor Predial, Digitador Alfanumérico.
+•	Cambios de rol aplican de inmediato sin requerir nuevo inicio de sesión.
+Historias de Usuario Gestión Catastral
+Historia 3: Registro de predios
+
+Como técnico catastral, quiero registrar un nuevo predio, para que se mantenga actualizado el inventario catastral conforme a IGAC.
+
+Criterios de aceptación:
+•	Permite ingresar datos físicos y jurídicos del predio.
+•	Valida que el NPN sea único y cumpla el formato.
+•	Guarda la información en la base de datos.
+•	Asocia el registro a su georreferenciación.
+Historia 4: Consulta de predios
+
+Como usuario, quiero buscar predios por filtros (NPN, municipio, Numero de ficha etc.), para que pueda consultar su información fácilmente.
+Criterios de aceptación:
+•	Ofrece filtros por NPN, municipio, zona, sector y otros definidos.
+•	Muestra información básica y permite acceder al detalle.
+•	Respeta permisos según el rol del usuario.
+
+Carga de Archivos XTF
+Historia 5: Carga de XTF
+
+Como técnico del gestor catastral, quiero cargar archivos. xtf al sistema, para que se importen automáticamente los datos según el modelo LADM-COL y extensión Antioquia.
+Criterios de aceptación:
+•	Permite seleccionar y cargar archivos con extensión. xtf.
+•	Valida extensión y estructura antes de importación.
+•	Procesa el archivo para integrarlo en la base de datos.
+Historia 6: Validación de modelo
+
+Como desarrollador backend, quiero validar el archivo. xtf con el modelo extendido. ili,
+para que no se carguen estructuras inválidas.
+Criterios de aceptación:
+•	Valida contra el modelo. ili (IGAC o Antioquia).
+•	Muestra reporte con línea, elemento y causa de error.
+•	Bloquea importación si la validación falla.
+
+
+
+
+
+Historia 7: Conversión a base de datos
+
+Como administrador, quiero convertir los datos del archivo .xtf a registros PostgreSQL, para que estén disponibles en el sistema para consulta y edición.
+Criterios de aceptación:
+•	Mapea entidades del XTF a tablas PostgreSQL.
+•	Mantiene relación entre datos alfanuméricos y cartografía.
+•	Registra usuario, fecha y resultado en auditoría.
+
+Historia 8: Visualización del proceso de carga
+
+Como usuario técnico, quiero ver un resumen de los datos cargados, para que pueda verificar que el proceso fue exitoso.
+Criterios de aceptación:
+•	Muestra cantidad de registros por entidad.
+•	Indica errores o advertencias detectadas.
+•	Permite exportar reporte a PDF o Excel.
+
+Historia 9: Revisión de datos cargados
+
+Como revisor catastral, quiero revisar la información importada, para que se validen errores y consistencias antes de publicarla.
+Criterios de aceptación:
+•	Permite acceder al detalle de cada registro importado.
+•	Ofrece opciones para aprobar o rechazar con observaciones.
+•	Solo registros aprobados pueden ser exportados a XTF.
+
+
+
+

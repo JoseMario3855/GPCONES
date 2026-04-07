@@ -1,0 +1,10 @@
+# Archivos temporales de pruebas
+temp-*.xtf
+*.log
+
+# Reportes de pruebas
+test-report.json
+
+# Node modules (si se instala localmente)
+node_modules/
+

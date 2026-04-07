@@ -1,0 +1,1451 @@
+consultas = {
+            "Fichas": f"""
+        select
+            predio.t_id,
+            MAX(terreno.t_id) as "id_terreno",
+            MAX(predio.n_ficha::varchar(255)) as "NroFicha",
+            MAX(predio.local_id) as "NumCedulaCatastral",
+            MAX(predio.departamento) as "Departamento",
+            MAX(predio.municipio) as "Municipio",
+            MAX(predio.matricula_inmobiliaria::varchar(255)) as "MatriculaInmobiliaria",
+            MAX(predio.codigo_orip) as "circulo",
+            MAX(sisantiguo.libro) as "Libro",
+            MAX(sisantiguo.tomo) as "Tomo",
+            MAX(sisantiguo.pagina) as "Pagina",
+            case
+                when MAX(derechotipo.ilicode)= 'Dominio' then '1|DOMINIO (TRADICION)'
+                when MAX(derechotipo.ilicode)= 'Posesion' then '2|POSESIÓN'
+                when MAX(derechotipo.ilicode)= 'Ocupacion' then '5|OCUPACIÓN'
+            end as "ModoAdquisicion",
+            case
+                when MAX(coluabt.ilicode)= 'Predio.Privado' then 'Predio.Privado.Privado'
+                else MAX(coluabt.ilicode)
+            end
+                    as "PredioLcTipo",
+            case
+                when MAX(condicion.ilicode)= 'NPH' then '1|NPH (0)'
+                when MAX(condicion.ilicode)= 'Informal' then '12|INFORMAL (2)'
+                when MAX(condicion.ilicode)= 'Bien_Uso_Publico' then '13|BIEN DE USO PUBLICO (3)'
+                when MAX(condicion.ilicode)= 'Via' then '11|VIA (4)'
+                when MAX(condicion.ilicode)= 'PH.Matriz' then '2|RPH'
+                when MAX(condicion.ilicode)= 'PH.Unidad_Predial' then '2|RPH'
+                when MAX(condicion.ilicode)= 'Condominio.Matriz' then '3|Parcelacion'
+                when MAX(condicion.ilicode)= 'Condominio.Unidad_Predial' then '3|Parcelacion'
+            end as "CaracteristicaPredio",
+            --MAX(condicion.ilicode) as "CaracteristicaPredio",
+            --max(direccion.nombre_predio) as "DireccionReal",direccion
+                max(tipodir.ilicode) as "TipoDireccion",
+            CASE
+            WHEN MAX(tipodir.ilicode) = 'No_Estructurada' THEN MAX(direccion.nombre_predio)
+            ELSE
+                TRIM(CONCAT_WS(' ',
+                    MAX(CASE
+                        WHEN clasevia.itfcode = '0' THEN 'AC'
+                        WHEN clasevia.itfcode = '1' THEN 'ACR'
+                        WHEN clasevia.itfcode = '2' THEN 'AV'
+                        WHEN clasevia.itfcode = '3' THEN 'AU'
+                        WHEN clasevia.itfcode = '4' THEN 'CIR'
+                        WHEN clasevia.itfcode = '5' THEN 'CL'
+                        WHEN clasevia.itfcode = '6' THEN 'CR'
+                        WHEN clasevia.itfcode = '7' THEN 'DG'
+                        WHEN clasevia.itfcode = '8' THEN 'TV'
+                        WHEN clasevia.itfcode = '9' THEN 'CQ'
+                    END),
+                    MAX(direccion.valor_via_principal),
+                    MAX(direccion.letra_via_principal),
+                    MAX(sector.ilicode),
+                    
+                    -- Agregar "N" solo si valor_via_principal no es NULL
+                    CASE 
+                        WHEN MAX(direccion.valor_via_principal) IS NOT NULL THEN 'N' 
+                        ELSE NULL 
+                    END,
+                    
+                    MAX(direccion.valor_via_generadora),
+                    MAX(direccion.letra_via_generadora),
+                    MAX(sectorp.ilicode),
+                    
+                    -- Agregar "-" solo si numero_predio no es NULL
+                    CASE 
+                        WHEN MAX(direccion.numero_predio) IS NOT NULL THEN '-' 
+                        ELSE NULL 
+                    END,
+                    
+                    MAX(direccion.numero_predio),
+                    MAX(direccion.complemento)
+                ))
+        END AS "DireccionReal",
+
+            MAX(predio.nombre) as "DireccionNombre",
+            case
+                when MAX(destino.ilicode)= 'Acuicola' then '60|ACUICOLA'
+                when MAX(destino.ilicode)= 'Agricola' then '24|AGRICOLA'
+                when MAX(destino.ilicode)= 'Agroindustrial' then '28|AGROINDUSTRIAL'
+                when MAX(destino.ilicode)= 'Agroforestal' then '61|AGROFORESTAL'
+                when MAX(destino.ilicode)= 'Comercial' then '3|COMERCIAL'
+                when MAX(destino.ilicode)= 'Cultural' then '6|CULTURAL'
+                when MAX(destino.ilicode)= 'Educativo' then '27|EDUCATIVO'
+                when MAX(destino.ilicode)= 'Forestal' then '30|FORESTAL'
+                when MAX(destino.ilicode)= 'Habitacional' then '1|HABITACIONAL'
+                when MAX(destino.ilicode)= 'Industrial' then '2|INDUSTRIAL'
+                when MAX(destino.ilicode)= 'Infraestructura_Asociada_Produccion_Agropecuaria' then '62|INFRAESTRUCTURA_ASOCIADA_PRODUCCIÓN_AGROPECUARIA'
+                when MAX(destino.ilicode)= 'Infraestructura_Hidraulica' then '63|INFRAESTRUCTURA HIDRAULICA'
+                when MAX(destino.ilicode)= 'Infraestructura_Saneamiento_Basico' then '64|INFRAESTRUCTURA SANEAMIENTO BÁSICO'
+                when MAX(destino.ilicode)= 'Infraestructura_Seguridad' then '67|INFRAESTRUCTURA SEGURIDAD'
+                when MAX(destino.ilicode)= 'Infraestructura_Transporte' then '65|INFRAESTRUCTURA TRANSPORTE'
+                when MAX(destino.ilicode)= 'Institucional' then '9|INSTITUCIONAL'
+                when MAX(destino.ilicode)= 'Mineria_Hidrocarburos' then '5|MINEROS_HIDROCARBUROS'
+                when MAX(destino.ilicode)= 'Lote_Urbanizable_No_Urbanizado' then '13|LOTE URBANIZABLE NO URBANIZADO'
+                when MAX(destino.ilicode)= 'Lote_Urbanizado_No_Construido' then '12|LOTE URBANIZADO NO CONSTRUIDO'
+                when MAX(destino.ilicode)= 'Lote_No_Urbanizable' then '14|LOTE NO URBANIZABLE'
+                when MAX(destino.ilicode)= 'Pecuario' then '25|PECUARIO'
+                when MAX(destino.ilicode)= 'Recreacional' then '7|RECREACIONAL'
+                when MAX(destino.ilicode)= 'Religioso' then '29|RELIGIOSO'
+                when MAX(destino.ilicode)= 'Salubridad' then '8|SALUBRIDAD'
+                when MAX(destino.ilicode)= 'Servicios_Funerarios' then '66|SERVICIOS_FUNERARIOS'
+                when MAX(destino.ilicode)= 'Uso_Publico' then '19|USO PUBLICO'
+            end as "DestinoEcconomico",
+            MAX(terreno.area_terreno) as "AreaTotalTerreno",
+            -- Área del terreno
+            SUM(distinct caracteristica.area_construida) as "AreaTotalConstruida",
+            sum(unidad.area_construida) as "AreaTotalUnidad",
+            MAX(left(predio.numero_predial, 22)) as "NpnTerreno",
+            MAX(predio.numero_predial) as "Npn",
+            MAX(SUBSTRING(predio.numero_predial, 1, 2)) as "Departamento",
+            MAX(SUBSTRING(predio.numero_predial, 3, 3)) as "Municipio",
+            MAX(SUBSTRING(predio.numero_predial, 6, 2)) as "Zona",
+            MAX(SUBSTRING(predio.numero_predial, 8, 2)) as "Sector" ,
+            MAX(SUBSTRING(predio.numero_predial, 10, 2)) as "Comuna",
+            MAX(SUBSTRING(predio.numero_predial, 12, 2)) as "Barrio",
+            MAX(SUBSTRING(predio.numero_predial, 14, 4)) as "Manzana o Vereda",
+            MAX(SUBSTRING(predio.numero_predial, 18, 4)) as "Terreno",
+            MAX(SUBSTRING(predio.numero_predial, 22, 1)) as "Condicion",
+            MAX(SUBSTRING(predio.numero_predial, 23, 2)) as "Edificio",
+            MAX(SUBSTRING(predio.numero_predial, 25, 2)) as "Piso",
+            MAX(SUBSTRING(predio.numero_predial, 27, 4)) as "Unidad Predial",
+            MAX(dph.area_total_terreno) as "AreaTotalLote",
+            MAX(dph.area_total_terreno_comun) as "AreaLoteComun",
+            case
+            	when MAX(condicion.ilicode)='Condominio.Unidad_Predial' then MAX(terreno.area_terreno)
+            	when MAX(condicion.ilicode)= 'PH.Unidad_Predial' then MAX(terreno.area_terreno)
+            end as "AreaLotePrivada",            
+            --MAX(dph.area_total_terreno_privada) as "AreaLotePrivada",
+            MAX(dph.numero_torres) as "TotalEdificios",
+            MAX(dph.total_unidades_privadas) as "UnidadesEnRPH",
+            null as ApartamentosOCasas,
+            null as locales,
+            null as GarajesCubiertos,
+            null as GarajesDescubiertos,
+            null as CuartosUtiles,
+            null as "Radicado",            
+            null as "PorcentajeLitigio",
+            MAX(copropiedad.coeficiente * 100) as "CoeficienteCopropiedad",
+            null as "UnidadPredial"
+        from
+            {esquema}.lc_predio as predio
+        join {esquema}.lc_destinacioneconomicatipo as destino on
+            predio.destinacion_economica = destino.t_id
+        join {esquema}.col_unidadadministrativabasicatipo as coluabt on
+            predio.tipo = coluabt.t_id
+        join {esquema}.lc_condicionprediotipo as condicion on
+            predio.condicion_predio = condicion.t_id
+        left join {esquema}.lc_derecho as derecho on
+            predio.t_id = derecho.unidad
+        left join {esquema}.lc_derechotipo as derechotipo on
+            derechotipo.t_id = derecho.tipo
+        left join {esquema}.cr_predio_copropiedad as copropiedad on
+            copropiedad.unidad_predial = predio.t_id
+        left join {esquema}.extreferenciaregistralsistemaantiguo sisantiguo on
+            predio.t_id = sisantiguo.lc_predio_referencia_registral_sistema_antiguo
+        left join {esquema}.col_uebaunit as ueba on
+            predio.t_id = ueba.baunit
+        left join {esquema}.cr_terreno as terreno on
+            terreno.t_id = ueba.ue_cr_terreno
+        left join {esquema}.cr_datosphcondominio as dph on
+            predio.t_id = dph.lc_predio
+        left join {esquema}.cr_unidadconstruccion unidad on
+            ueba.ue_cr_unidadconstruccion = unidad.t_id
+        left join {esquema}.cr_caracteristicasunidadconstruccion caracteristica on
+            unidad.cr_caracteristicasunidadconstruccion = caracteristica.t_id
+        left join {esquema}.extdireccion direccion on
+            predio.t_id = lc_predio_direccion
+        left join {esquema}.extdireccion_clase_via_principal clasevia on
+            direccion.clase_via_principal = clasevia.t_id
+        left join {esquema}.extdireccion_sector_ciudad sector on
+            direccion.sector_ciudad = sector.t_id
+        left join {esquema}.extdireccion_tipo_direccion tipodir on direccion.tipo_direccion =tipodir.t_id
+        left join {esquema}.extdireccion_sector_predio sectorp on direccion.sector_predio =sectorp.t_id
+        group by
+            predio.t_id
+            -- Agrupar por predio.t_id para eliminar duplicados
+        
+        """,
+        "Propietarios": f"""
+        select
+	derecho.t_id as "d.t_id",
+    fuente.t_id as "ftid",
+	agrupacion.t_id as "a.t_id",
+	coalesce(intereasdo.t_id,
+	interesadomiembros.t_id) as "interesado",
+	predio.n_ficha::VARCHAR(255) as "NroFicha",
+	predio.numero_predial as "Npn ",
+	case
+		when coalesce(documentotipo.ilicode,
+		md.ilicode) = 'Cedula_Ciudadania' then '10|CEDULA CIUDADANIA'
+		when coalesce(documentotipo.ilicode,
+		md.ilicode) = 'NIT' then '3|NIT'
+		when coalesce(documentotipo.ilicode,
+		md.ilicode) = 'Tarjeta_Identidad' then '6|TARJETA DE IDENTIDAD'
+		when coalesce(documentotipo.ilicode,
+		md.ilicode) = 'Secuencial' then '8|CODIGO ASIGNADO'
+		when coalesce(documentotipo.ilicode,
+		md.ilicode) = 'Cedula_Extranjeria' then '4|CEDULA DE EXTRANJERIA'
+		when coalesce(documentotipo.ilicode,
+		md.ilicode) = 'Pasaporte' then '7|PASAPORTE'
+		when coalesce(documentotipo.ilicode,
+		md.ilicode) = 'Registro_Civil' then '5|REGISTRO CIVIL'
+	end as "TipoDocumento",
+	coalesce(intereasdo.documento_identidad,
+	interesadomiembros.documento_identidad) as "Documento",
+	predio.matricula_inmobiliaria::VARCHAR(255) as "MatriculaInmobiliaria",
+	TO_CHAR(derecho.fecha_registro,
+	'DD/MM/YYYY') as "Fecha",
+	--derecho.fecha_registro AS "Fecha",
+	derecho.libro as "Libro",
+	derecho.tomo as "Tomo",
+	case
+		when cm.t_id is not null
+		and cm.participacion != 0 then cm.participacion * 100
+		when cm.t_id is not null
+		and cm.participacion = 0 then cm.participacion
+		when cm.t_id is null
+		and derecho.fraccion_derecho != 0 then derecho.fraccion_derecho * 100
+		when cm.t_id is null
+		and derecho.fraccion_derecho = 0 then derecho.fraccion_derecho
+		else 0
+	end as "Derecho",
+	case
+		when derecho.gravable = true then 'SI'
+		when derecho.gravable = false then 'NO'
+	end as "Gravable",
+	--derecho.n_escritura as "Escritura",
+    fuente.numero_fuente as "Escritura",
+	TO_CHAR(fuente.fecha_documento_fuente,
+	'DD/MM/YYYY') as "FechaEscritura",
+	--fuente.fecha_documento_fuente AS "FechaEscritura",
+            coalesce(intereasdo.primer_nombre,
+	interesadomiembros.primer_nombre) as "PrimerNombre",
+	coalesce(intereasdo.segundo_nombre,
+	interesadomiembros.segundo_nombre) as "SegundoNombre",
+	coalesce(intereasdo.primer_apellido,
+	interesadomiembros.primer_apellido) as "PrimerApellido",
+	coalesce(intereasdo.segundo_apellido,
+	interesadomiembros.segundo_apellido) as "SegundoApellido",
+	coalesce(intereasdo.razon_social,
+	interesadomiembros.razon_social) as "RazonSocial",
+	coalesce(cs.ilicode,
+	cs2.ilicode) as "Sexo",
+	derecho.codigo_fideicomiso as "CodigoFideicomiso",
+	case
+		when unidadadministrativa.ilicode = 'Predio.Privado' then '1|PREDIO PRIVADO (PARTICULAR)'
+		when unidadadministrativa.ilicode = 'Predio.Publico.Baldio' then '21|PREDIO PUBLICO BALDIO'
+		when unidadadministrativa.ilicode = 'Predio.Publico.Fiscal_Patrimonial' then '22|PREDIO PUBLICO FISCAL'
+		when unidadadministrativa.ilicode = 'Predio.Publico.Uso_Publico' then '24|PREDIO PUBLICO USO PUBLICO'
+		when unidadadministrativa.ilicode = 'Predio.Publico.Publico' then '20|PREDIO PUBLICO'
+		else unidadadministrativa.ilicode
+	end as "CalidadPropietarioOficial",
+	null as "CalidadPropietario",
+	fuente.ente_emisor,
+	case
+		when fuente.ente_emisor ilike '%SECRETARÍA DE CONSEJO MUNICIPAL%' then 'SCM|SECRETARIA DE CONSEJO MUNICIPAL'
+		when fuente.ente_emisor ilike '%SUPERSOCIEDADES%' then 'SUP|SUPERSOCIEDADES'
+		when fuente.ente_emisor ilike '%MUNICIPIO%' then 'MUN|MUNICIPIO'
+		when fuente.ente_emisor ilike '%INCORA%' then 'INC|INCORA'
+		when fuente.ente_emisor ilike '%OTRO%' then 'OTR|OTRO'
+		when LOWER(SPLIT_PART(fuente.ente_emisor, '|', 3)) ~ '^[0-9]+$' then 'NOT|NOTARIA'
+		when LOWER(SPLIT_PART(fuente.ente_emisor, '|', 3)) like 'ssc%' then 'TSSC|TRIBUNAL SUPERIOR SALA CIVIL'
+		when LOWER(SPLIT_PART(fuente.ente_emisor, '|', 3)) like 'ssl%' then 'TSSL|TRIBUNAL SUPERIOR SALA LABORAL'
+		when LOWER(SPLIT_PART(fuente.ente_emisor, '|', 3)) like 'cc%' then 'JCC|JUZGADO CIVIL DEL CIRCUITO'
+		when LOWER(SPLIT_PART(fuente.ente_emisor, '|', 3)) like 'lc%' then 'JLC|JUZGADO LABORAL DEL CIRCUITO'
+		when LOWER(SPLIT_PART(fuente.ente_emisor, '|', 3)) like 'c%' then 'JC|JUZGADO CIVIL MUNICIPAL'
+		when LOWER(SPLIT_PART(fuente.ente_emisor, '|', 3)) like 'p%' then 'JPM|JUZGADO PROMISCUO MUNICIPAL'
+		when LOWER(SPLIT_PART(fuente.ente_emisor, '|', 3)) like 'f%' then 'JF|JUZGADO DE FAMILIA'
+		when LOWER(SPLIT_PART(fuente.ente_emisor, '|', 3)) like 'a%' then 'JA|JUZGADO AGRARIO'
+		else null
+	end as "Entidad",
+    CASE
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='05' THEN '5|ANTIOQUIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='08' THEN '8|ATLANTICO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='11' THEN '11|SANTA FE DE BOGOTA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='13' THEN '13|BOLIVAR'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='15' THEN '15|BOYACA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='17' THEN '17|CALDAS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='18' THEN '18|CAQUETA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='19' THEN '19|CAUCA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='20' THEN '20|CESAR'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='23' THEN '23|CORDOBA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='25' THEN '25|CUNDINAMARCA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='27' THEN '27|CHOCO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='41' THEN '41|HUILA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='44' THEN '44|GUAJIRA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='47' THEN '47|MAGDALENA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='50' THEN '50|META'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='52' THEN '52|NARIÑO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='54' THEN '54|NORTE DE SANTANDER'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='63' THEN '63|QUINDIO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='66' THEN '66|RISARALDA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='68' THEN '68|SANTANDER'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='70' THEN '70|SUCRE'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='73' THEN '73|TOLIMA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='76' THEN '76|VALLE'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='81' THEN '81|ARAUCA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='85' THEN '85|CASANARE'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='86' THEN '86|PUTUMAYO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='88' THEN '88|SAN ANDRES'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='91' THEN '91|AMAZONAS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='94' THEN '94|GUAINIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='95' THEN '95|GUAVIARE'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='97' THEN '97|VAUPES'
+	    WHEN SUBSTRING(fuente.ente_emisor, 1, 2)='99' THEN '99|VICHADA'
+	    ELSE NULL
+	END AS "EntidadDepartamento",
+    CASE
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='001' THEN '1|MEDELLIN'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='002' THEN '2|ABEJORRAL'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='004' THEN '4|ABRIAQUI'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='021' THEN '21|ALEJANDRIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='030' THEN '30|AMAGA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='031' THEN '31|AMALFI'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='034' THEN '34|ANDES'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='036' THEN '36|ANGELOPOLIS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='038' THEN '38|ANGOSTURA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='040' THEN '40|ANORI'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='042' THEN '42|SANTA FE DE ANTIOQUIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='044' THEN '44|ANZA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='045' THEN '45|APARTADO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='051' THEN '51|ARBOLETES'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='055' THEN '55|ARGELIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='059' THEN '59|ARMENIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='079' THEN '79|BARBOSA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='086' THEN '86|BELMIRA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='088' THEN '88|BELLO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='091' THEN '91|BETANIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='093' THEN '93|BETULIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='101' THEN '101|CIUDAD BOLIVAR'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='107' THEN '107|BRICEÑO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='113' THEN '113|BURITICA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='120' THEN '120|CACERES'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='125' THEN '125|CAICEDO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='129' THEN '129|CALDAS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='134' THEN '134|CAMPAMENTO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='138' THEN '138|CAÑASGORDAS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='142' THEN '142|CARACOLI'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='145' THEN '145|CARAMANTA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='147' THEN '147|CAREPA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='148' THEN '148|EL CARMEN DE VIBORAL'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='150' THEN '150|CAROLINA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='154' THEN '154|CAUCASIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='172' THEN '172|CHIGORODO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='190' THEN '190|CISNEROS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='197' THEN '197|COCORNA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='206' THEN '206|CONCEPCION'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='209' THEN '209|CONCORDIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='212' THEN '212|COPACABANA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='234' THEN '234|DABEIBA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='237' THEN '237|DON MATIAS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='240' THEN '240|EBEJICO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='250' THEN '250|EL BAGRE'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='264' THEN '264|ENTRERRIOS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='266' THEN '266|ENVIGADO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='282' THEN '282|FREDONIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='284' THEN '284|FRONTINO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='306' THEN '306|GIRALDO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='308' THEN '308|GIRARDOTA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='310' THEN '310|GOMEZ PLATA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='313' THEN '313|GRANADA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='315' THEN '315|GUADALUPE'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='318' THEN '318|GUARNE'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='321' THEN '321|GUATAPE'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='347' THEN '347|HELICONIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='353' THEN '353|HISPANIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='360' THEN '360|ITAGUI'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='361' THEN '361|ITUANGO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='364' THEN '364|JARDIN'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='368' THEN '368|JERICO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='376' THEN '376|LA CEJA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='380' THEN '380|LA ESTRELLA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='390' THEN '390|LA PINTADA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='400' THEN '400|LA UNION'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='411' THEN '411|LIBORINA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='425' THEN '425|MACEO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='440' THEN '440|MARINILLA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='467' THEN '467|MONTEBELLO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='475' THEN '475|MURINDO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='480' THEN '480|MUTATA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='483' THEN '483|NARIÑO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='490' THEN '490|NECOCLI'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='495' THEN '495|NECHI'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='501' THEN '501|OLAYA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='541' THEN '541|EL PEÑOL'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='543' THEN '543|PEQUE'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='576' THEN '576|PUEBLORRICO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='579' THEN '579|PUERTO BERRIO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='585' THEN '585|PUERTO NARE'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='591' THEN '591|PUERTO TRIUNFO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='604' THEN '604|REMEDIOS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='607' THEN '607|EL RETIRO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='615' THEN '615|RIONEGRO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='628' THEN '628|SABANALARGA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='631' THEN '631|SABANETA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='642' THEN '642|SALGAR'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='647' THEN '647|SAN ANDRES DE CUERQUIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='649' THEN '649|SAN CARLOS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='652' THEN '652|SAN FRANCISCO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='656' THEN '656|SAN JERONIMO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='658' THEN '658|SAN JOSE DE LA MONTANA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='659' THEN '659|SAN JUAN DE URABA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='660' THEN '660|SAN LUIS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='664' THEN '664|SAN PEDRO DE LOS MILAGROS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='665' THEN '665|SAN PEDRO DE URABA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='667' THEN '667|SAN RAFAEL'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='670' THEN '670|SAN ROQUE'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='674' THEN '674|SAN VICENTE'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='679' THEN '679|SANTA BARBARA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='686' THEN '686|SANTA ROSA DE OSOS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='690' THEN '690|SANTO DOMINGO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='697' THEN '697|EL SANTUARIO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='736' THEN '736|SEGOVIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='756' THEN '756|SONSON'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='761' THEN '761|SOPETRAN'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='789' THEN '789|TAMESIS'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='790' THEN '790|TARAZA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='792' THEN '792|TARSO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='809' THEN '809|TITIRIBI'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='819' THEN '819|TOLEDO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='837' THEN '837|TURBO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='842' THEN '842|URAMITA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='847' THEN '847|URRAO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='854' THEN '854|VALDIVIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='856' THEN '856|VALPARAISO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='858' THEN '858|VEGACHI'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='861' THEN '861|VENECIA'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='873' THEN '873|VIGIA DEL FUERTE'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='885' THEN '885|YALI'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='887' THEN '887|YARUMAL'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='890' THEN '890|YOLOMBO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='893' THEN '893|YONDO'
+	    WHEN SUBSTRING(fuente.ente_emisor, 4, 3)='895' THEN '895|ZARAGOZA'
+	    ELSE NULL
+	END AS "EntidadMunicipio",
+	CASE
+        WHEN fuente.ente_emisor IS NULL THEN NULL
+        WHEN REGEXP_REPLACE(SPLIT_PART(fuente.ente_emisor, '|', 3), '\D', '', 'g') <> ''
+        THEN REGEXP_REPLACE(SPLIT_PART(fuente.ente_emisor, '|', 3), '\D', '', 'g')
+    ELSE '1'
+    END AS "NumeroFallo",
+    null as "Radicado"
+    FROM {esquema}.lc_derecho derecho
+    LEFT JOIN {esquema}.lc_derechotipo derechotipo ON derecho.tipo = derechotipo.t_id
+    INNER JOIN {esquema}.lc_predio predio ON derecho.unidad = predio.t_id
+    left join {esquema}.col_unidadadministrativabasicatipo unidadadministrativa on predio.tipo=unidadadministrativa.t_id
+    LEFT JOIN {esquema}.cr_interesado intereasdo ON derecho.interesado_cr_interesado = intereasdo.t_id
+    LEFT JOIN {esquema}.cr_documentotipo documentotipo ON documentotipo.t_id = intereasdo.tipo_documento
+    LEFT JOIN {esquema}.cr_sexotipo cs ON cs.t_id = intereasdo.sexo
+    LEFT JOIN {esquema}.cr_agrupacioninteresados agrupacion ON derecho.interesado_cr_agrupacioninteresados = agrupacion.t_id
+    LEFT JOIN {esquema}.col_miembros cm ON agrupacion.t_id = cm.agrupacion
+    LEFT JOIN {esquema}.cr_interesado interesadomiembros ON interesadomiembros.t_id = cm.interesado_cr_interesado
+    LEFT JOIN {esquema}.cr_documentotipo md ON md.t_id = interesadomiembros.tipo_documento
+    LEFT JOIN {esquema}.cr_sexotipo cs2 ON cs2.t_id = interesadomiembros.sexo
+    LEFT JOIN LATERAL (
+  SELECT 
+      f.t_id              AS t_id,
+      f.numero_fuente     AS numero_fuente,
+      f.fecha_documento_fuente,
+      f.ente_emisor       AS ente_emisor
+  FROM {esquema}.col_rrrfuente cr
+  JOIN {esquema}.lc_fuenteadministrativa f
+    ON f.t_id = cr.fuente_administrativa
+  WHERE cr.rrr = derecho.t_id
+  ORDER BY 
+      f.fecha_documento_fuente DESC NULLS LAST,
+      COALESCE(f.numero_fuente, '') DESC,
+      f.t_id DESC
+  LIMIT 1
+) fuente ON TRUE
+    WHERE derecho.interesado_cr_interesado IS NOT NULL 
+    or derecho.interesado_cr_agrupacioninteresados IS NOT null
+    order by predio.n_ficha
+        """,
+        "Construcciones": f"""
+        select 
+		caracteristica.t_id,
+        max(predio.n_ficha) as "NroFicha", 
+        max(unidad.t_id) as "secuencia",
+        max(predio.numero_predial) as "Npn",
+        MAX(SUBSTRING(predio.numero_predial, 22, 1)) as "Condicion",        
+        --max(construccion.identificador) as "Construccion",
+        max(caracteristica.identificador) as "NumeroConstruccion",
+        Max(predio.n_ficha||'-'||caracteristica.identificador) as "FHNC",
+        max(case 
+                when constipo.ilicode='Residencial' then 'R'
+                when constipo.ilicode='Industrial' then 'I'
+                when constipo.ilicode='Comercial' then 'C'
+                when constipo.ilicode='Institucional' then 'T'
+                when constipo.ilicode = 'Anexo' then 'N'
+            end) as
+            "TipoConstruccion", 
+            max(CASE
+            -- Residencial
+            WHEN uso.ilicode = 'Residencial.Apartamentos_4_y_mas_pisos_en_PH' THEN '800|Residencial.Apartamentos_4_y_mas_pisos_en_PHv'
+            WHEN uso.ilicode = 'Residencial.Apartamentos_4_y_mas_pisos' THEN '802|Residencial.Apartamentos_Mas_De_4_Pisos'
+            WHEN uso.ilicode = 'Residencial.Barracas' THEN '803|Residencial.Barracas'
+            WHEN uso.ilicode = 'Residencial.Casa_Elbas' THEN '804|Residencial.Casa_Elbas'
+            WHEN uso.ilicode = 'Residencial.Depositos_Lockers' THEN '805|Residencial.Depositos_Lockers'
+            WHEN uso.ilicode = 'Residencial.Garajes_Cubiertos' THEN '806|Residencial.Garajes_Cubiertos'
+            WHEN uso.ilicode = 'Residencial.Garajes_En_PH' THEN '807|Residencial.Garajes_En_PH'
+            WHEN uso.ilicode = 'Residencial.Salon_Comunal' THEN '808|Residencial.Salon_Comunal'
+            WHEN uso.ilicode = 'Residencial.Secadero_Ropa' THEN '809|Residencial.Secadero_Ropa'
+            WHEN uso.ilicode = 'Residencial.Vivienda_Colonial' THEN '810|Residencial.Vivienda_Colonial'
+            WHEN uso.ilicode = 'Residencial.Vivienda_Colonial_en_PH' THEN '910|Residencial.Vivienda_Colonial_en_PH'
+            WHEN uso.ilicode = 'Residencial.Vivienda_Hasta_3_Pisos' THEN '811|Residencial.Vivienda_Hasta_3_Pisos'
+            WHEN uso.ilicode = 'Residencial.Vivienda_Hasta_3_Pisos_En_PH' THEN '812|Residencial.Vivienda_Hasta_3_Pisos_En_PH'
+            WHEN uso.ilicode = 'Residencial.Vivienda_Recreacional' THEN '813|Residencial.Vivienda_Recreacional'
+            WHEN uso.ilicode = 'Residencial.Vivienda_Recreacional_En_PH' THEN '814|Residencial.Vivienda_Recreacional_En_PH'
+
+            -- Comercial
+            WHEN uso.ilicode = 'Comercial.Bodegas_Comerciales_Grandes_Almacenes' THEN '815|Comercial.Bodegas_Comerciales_Grandes_Almacenes'
+            WHEN uso.ilicode = 'Comercial.Bodegas_Comerciales_en_PH' THEN '816|Comercial.Bodegas_Comerciales_en_PH'
+            WHEN uso.ilicode = 'Comercial.Centros_Comerciales' THEN '817|Comercial.Centros_Comerciales'
+            WHEN uso.ilicode = 'Comercial.Centros_Comerciales_en_PH' THEN '818|Comercial.Centros_Comerciales_en_PH'
+            WHEN uso.ilicode = 'Comercial.Clubes_Casinos' THEN '819|Comercial.Clubes_Casinos'
+            WHEN uso.ilicode = 'Comercial.Comercio' THEN '820|Comercial.Comercio'
+            WHEN uso.ilicode = 'Comercial.Comercio_Colonial' THEN '821|Comercial.Comercio_Colonial'
+            WHEN uso.ilicode = 'Comercial.Comercio_en_PH' THEN '822|Comercial.Comercio_en_PH'
+            WHEN uso.ilicode = 'Comercial.Hotel_Colonial' THEN '823|Comercial.Hotel_Colonial'
+            WHEN uso.ilicode = 'Comercial.Hoteles' THEN '824|Comercial.Hoteles'
+            WHEN uso.ilicode = 'Comercial.Hoteles_en_PH' THEN '825|Comercial.Hoteles_en_PH'
+            WHEN uso.ilicode = 'Comercial.Oficinas_Consultorios' THEN '826|Comercial.Oficinas_Consultorios'
+            WHEN uso.ilicode = 'Comercial.Oficinas_Consultorios_Coloniales' THEN '827|Comercial.Oficinas_Consultorios_Coloniales'
+            WHEN uso.ilicode = 'Comercial.Oficinas_Consultorios_en_PH' THEN '828|Comercial.Oficinas_Consultorios_en_PH'
+            WHEN uso.ilicode = 'Comercial.Parque_Diversiones' THEN '829|Comercial.Parque_Diversiones'
+            WHEN uso.ilicode = 'Comercial.Parqueaderos' THEN '830|Comercial.Parqueaderos'
+            WHEN uso.ilicode = 'Comercial.Parqueaderos_en_PH' THEN '831|Comercial.Parqueaderos_en_PH'
+            WHEN uso.ilicode = 'Comercial.Pensiones_y_Residencias' THEN '832|Comercial.Pensiones_y_Residencias'
+            WHEN uso.ilicode = 'Comercial.Plaza_Mercado' THEN '833|Comercial.Plaza_Mercado'
+            WHEN uso.ilicode = 'Comercial.Restaurante_Colonial' THEN '834|Comercial.Restaurante_Colonial'
+            WHEN uso.ilicode = 'Comercial.Restaurantes' THEN '835|Comercial.Restaurantes'
+            WHEN uso.ilicode = 'Comercial.Restaurantes_en_PH' THEN '836|Comercial.Restaurantes_en_PH'
+            WHEN uso.ilicode = 'Comercial.Teatro_Cinemas' THEN '837|Comercial.Teatro_Cinemas'
+            WHEN uso.ilicode = 'Comercial.Teatro_Cinemas_en_PH' THEN '838|Comercial.Teatro_Cinemas_en_PH'
+
+            -- Industrial
+            WHEN uso.ilicode = 'Industrial.Bodega_Casa_Bomba' THEN '839|Industrial.Bodega_Casa_Bomba'
+            WHEN uso.ilicode = 'Industrial.Bodegas_Casa_Bomba_en_PH' THEN '840|Industrial.Bodegas_Casa_Bomba_en_PH'
+            WHEN uso.ilicode = 'Industrial.Industrias' THEN '841|Industrial.Industrias'
+            WHEN uso.ilicode = 'Industrial.Industrias_en_PH' THEN '842|Industrial.Industrias_en_PH'
+            WHEN uso.ilicode = 'Industrial.Talleres' THEN '843|Industrial.Talleres'
+
+            -- Institucional
+            WHEN uso.ilicode = 'Institucional.Aulas_de_Clases' THEN '844|Institucional.Aulas_de_Clases'
+            WHEN uso.ilicode = 'Institucional.Biblioteca' THEN '845|Institucional.Biblioteca'
+            WHEN uso.ilicode = 'Institucional.Carceles' THEN '846|Institucional.Carceles'
+            WHEN uso.ilicode = 'Institucional.Casas_de_Culto' THEN '847|Institucional.Casas_de_Culto'
+            WHEN uso.ilicode = 'Institucional.Clinicas_Hospitales_Centros_Medicos' THEN '848|Institucional.Clinicas_Hospitales_Centros_Medicos'
+            WHEN uso.ilicode = 'Institucional.Colegio_y_Universidades' THEN '849|Institucional.Colegio_y_Universidades'
+            WHEN uso.ilicode = 'Institucional.Coliseos' THEN '850|Institucional.Coliseos'
+            WHEN uso.ilicode = 'Institucional.Entidad_Educativa_Colonial_Colegio_Colonial' THEN '851|Institucional.Entidad_Educativa_Colonial_Colegio_Colonial'
+            WHEN uso.ilicode = 'Institucional.Estadios' THEN '852|Institucional.Estadios'
+            WHEN uso.ilicode = 'Institucional.Fuertes_y_Castillos' THEN '853|Institucional.Fuertes_y_Castillos'
+            WHEN uso.ilicode = 'Institucional.Iglesia' THEN '854|Institucional.Iglesia'
+            WHEN uso.ilicode = 'Institucional.Iglesia_en_PH' THEN '855|Institucional.Iglesia_en_PH'
+            WHEN uso.ilicode = 'Institucional.Instalaciones_Militares' THEN '856|Institucional.Instalaciones_Militares'
+            WHEN uso.ilicode = 'Institucional.Jardin_Infantil_en_Casa' THEN '857|Institucional.Jardin_Infantil_en_Casa'
+            WHEN uso.ilicode = 'Institucional.Parque_Cementerio' THEN '858|Institucional.Parque_Cementerio'
+            WHEN uso.ilicode = 'Institucional.Planetario' THEN '859|Institucional.Planetario'
+            WHEN uso.ilicode = 'Institucional.Plaza_de_Toros' THEN '860|Institucional.Plaza_de_Toros'
+            WHEN uso.ilicode = 'Institucional.Puestos_de_Salud' THEN '861|Institucional.Puestos_de_Salud'
+            WHEN uso.ilicode = 'Institucional.Museos' THEN '862|Institucional.Museos'
+            WHEN uso.ilicode = 'Institucional.Seminarios_Conventos' THEN '863|Institucional.Seminarios_Conventos'
+            WHEN uso.ilicode = 'Institucional.Teatro' THEN '864|Institucional.Teatro'
+            WHEN uso.ilicode = 'Institucional.Unidad_Deportiva' THEN '865|Institucional.Unidad_Deportiva'
+            WHEN uso.ilicode = 'Institucional.Velodromo_Patinodromo' THEN '866|Institucional.Velodromo_Patinodromo'
+
+            -- Anexo
+            WHEN uso.ilicode = 'Anexo.Albercas_Banaderas' THEN '867|Anexo.Albercas_Banaderas'
+            WHEN uso.ilicode = 'Anexo.Beneficiaderos' THEN '868|Anexo.Beneficiaderos'
+            WHEN uso.ilicode = 'Anexo.Camaroneras' THEN '869|Anexo.Camaroneras'
+            WHEN uso.ilicode = 'Anexo.Canchas' THEN '870|Anexo.Canchas'
+            WHEN uso.ilicode = 'Anexo.Canchas_de_Tenis' THEN '871|Anexo.Canchas_de_Tenis'
+            WHEN uso.ilicode = 'Anexo.Carretera' THEN '872|Anexo.Carretera'
+            WHEN uso.ilicode = 'Anexo.Cerramiento' THEN '873|Anexo.Cerramiento'
+            WHEN uso.ilicode = 'Anexo.Cimientos_Estructura_Muros_y_Placa_Base' THEN '874|Anexo.Cimientos_Estructura_Muros_y_Placa_Base'
+            WHEN uso.ilicode = 'Anexo.Cocheras_Marraneras_Porquerizas' THEN '875|Anexo.Cocheras_Marraneras_Porquerizas'
+            WHEN uso.ilicode = 'Anexo.Construccion_en_Membrana_Arquitectonica' THEN '876|Anexo.Construccion_en_Membrana_Arquitectonica'
+            WHEN uso.ilicode = 'Anexo.Contenedor' THEN '877|Anexo.Contenedor'
+            WHEN uso.ilicode = 'Anexo.Corrales' THEN '878|Anexo.Corrales'
+            WHEN uso.ilicode = 'Anexo.Establos_Pesebreras_Caballerizas' THEN '879|Anexo.Establos_Pesebreras_Caballerizas'
+            WHEN uso.ilicode = 'Anexo.Estacion_Bombeo' THEN '880|Anexo.Estacion_Bombeo'
+            WHEN uso.ilicode = 'Anexo.Estacion_Sistema_Transporte' THEN '881|Anexo.Estacion_Sistema_Transporte'
+            WHEN uso.ilicode = 'Anexo.Galpones_Gallineros' THEN '882|Anexo.Galpones_Gallineros'
+            WHEN uso.ilicode = 'Anexo.Glamping' THEN '902|Anexo.Glamping'
+            WHEN uso.ilicode = 'Anexo.Hangar' THEN '883|Anexo.Hangar'
+            WHEN uso.ilicode = 'Anexo.Kioscos' THEN '884|Anexo.Kioscos'
+            WHEN uso.ilicode = 'Anexo.Lagunas_de_Oxidacion' THEN '885|Anexo.Lagunas_de_Oxidacion'
+            WHEN uso.ilicode = 'Anexo.Marquesinas_Patios_Cubiertos' THEN '886|Anexo.Marquesinas_Patios_Cubiertos'
+            WHEN uso.ilicode = 'Anexo.Muelles' THEN '887|Anexo.Muelles'
+            WHEN uso.ilicode = 'Anexo.Murallas' THEN '888|Anexo.Murallas'
+            WHEN uso.ilicode = 'Anexo.Pergolas' THEN '889|Anexo.Pergolas'
+            WHEN uso.ilicode = 'Anexo.Piscinas' THEN '890|Anexo.Piscinas'
+            WHEN uso.ilicode = 'Anexo.Pista_Aeropuerto' THEN '891|Anexo.Pista_Aeropuerto'
+            WHEN uso.ilicode = 'Anexo.Pozos' THEN '892|Anexo.Pozos'
+            WHEN uso.ilicode = 'Anexo.Ramadas_Cobertizos_Caneyes' THEN '893|Anexo.Ramadas_Cobertizos_Caneyes'
+            WHEN uso.ilicode = 'Anexo.Secaderos' THEN '894|Anexo.Secaderos'
+            WHEN uso.ilicode = 'Anexo.Silos' THEN '895|Anexo.Silos'
+            WHEN uso.ilicode = 'Anexo.Tanques' THEN '896|Anexo.Tanques'
+            WHEN uso.ilicode = 'Anexo.Toboganes' THEN '897|Anexo.Toboganes'
+            WHEN uso.ilicode = 'Anexo.Torre_de_Control' THEN '898|Anexo.Torre_de_Control'
+            WHEN uso.ilicode = 'Anexo.Torres_de_Enfriamiento' THEN '899|Anexo.Torres_de_Enfriamiento'
+            WHEN uso.ilicode = 'Anexo.Via_Ferrea' THEN '901|Anexo.Via_Ferrea'
+
+            -- Valor por defecto (si no coincide con ninguno de los anteriores)
+            ELSE 'ValorPorDefecto'
+        end) AS "IdUso",
+        max(CASE
+            WHEN noconvencional.cr_carascteristicasunidadconstrccn_cr_clfccncnstrccion is not null THEN 'No Convencional'
+            WHEN convencional.cr_carascteristicasunidadconstrccn_cr_clfccncnstrccion is not null then 'Convencional'
+            else null
+        end) AS "ConvencionalNoConvencional",
+        --uso.ilicode as "IdUso",
+        max(case 
+            when uso.ilicode='Anexo.Torres_de_Enfriamiento' then anexo.ilicode
+            else  'TIPO 7' || RIGHT(anexo.ilicode::text, 2) 	
+        end) as "calificacionNoConvencional",
+        max(COALESCE(
+            convencional.total_calificacion,
+            CASE
+                WHEN uso.ilicode = 'Anexo.Torres_de_Enfriamiento' THEN 0
+                WHEN RIGHT(anexo.ilicode::text, 2) ~ '^\d+$' THEN RIGHT(anexo.ilicode::text, 2)::integer
+                ELSE 0  -- O cualquier otro valor predeterminado
+            END
+        )) as "Puntos",
+        max(caracteristica.area_construida) as "AreaConstruida",
+        --caracteristica.area_construida as "area caracteristica",
+        max(construccion.total_pisos) as "NumeroPisos",
+        max((2025-caracteristica.anio_construccion)) as "AñoConstruccion",
+        max('100') as "PorcentajeConstruido",
+        max(caracteristica.total_habitaciones) as "TotalHabitaciones",
+        max(caracteristica.total_locales) as "TotalLocales",
+        max(caracteristica.total_banios) as "TotalBanos",
+        max(null) as "Radicado"
+
+
+        from {esquema}.cr_unidadconstruccion unidad
+        left join {esquema}.cr_caracteristicasunidadconstruccion caracteristica on unidad.cr_caracteristicasunidadconstruccion = caracteristica.t_id
+        left join {esquema}.cr_unidadconstrucciontipo constipo on caracteristica.tipo_unidad_construccion =constipo.t_id
+        left join {esquema}.cr_usouconstipo uso on caracteristica.uso=uso.t_id
+        left join {esquema}.cr_calificacionconvencional convencional on caracteristica.t_id=convencional.cr_carascteristicasunidadconstrccn_cr_clfccncnstrccion
+        left join {esquema}.cr_calificacionnoconvencional noconvencional on caracteristica.t_id=noconvencional.cr_carascteristicasunidadconstrccn_cr_clfccncnstrccion 
+        left join {esquema}.cr_anexotipo anexo on noconvencional.tipo_anexo =anexo.t_id
+        left join {esquema}.cr_construccion construccion on unidad.cr_construccion =construccion.t_id 
+        left join {esquema}.col_uebaunit ueba on unidad.t_id=ueba.ue_cr_unidadconstruccion 
+        left join {esquema}.lc_predio predio on ueba.baunit =predio.t_id 
+        group by caracteristica.t_id
+        --ORDER BY predio.n_ficha;
+        """,
+        "CalificacionesConstrucciones": f"""
+         select    
+        	caracteristica.t_id as caracteristica,
+            --max(convencional.t_id),
+            max(unidad.t_id) as "secuencia",
+            --max(convencional.t_id) as "Convencional",            
+            max(predio.n_ficha::VARCHAR(255)) AS "NroFicha ",
+            max(predio.numero_predial) as "Npn",
+            MAX(SUBSTRING(predio.numero_predial, 22, 1)) as "Condicion", 
+            Max(predio.n_ficha||'-'||caracteristica.identificador) as "FHNC",
+            Max(predio.numero_predial::VARCHAR(255)) as "Npn ",
+            max(tipocal.ilicode) as tipo ,
+            max(CASE
+            -- Residencial
+            WHEN uso.ilicode = 'Residencial.Apartamentos_4_y_mas_pisos_en_PH' THEN '800|Residencial.Apartamentos_4_y_mas_pisos_en_PHv'
+            WHEN uso.ilicode = 'Residencial.Apartamentos_4_y_mas_pisos' THEN '802|Residencial.Apartamentos_Mas_De_4_Pisos'
+            WHEN uso.ilicode = 'Residencial.Barracas' THEN '803|Residencial.Barracas'
+            WHEN uso.ilicode = 'Residencial.Casa_Elbas' THEN '804|Residencial.Casa_Elbas'
+            WHEN uso.ilicode = 'Residencial.Depositos_Lockers' THEN '805|Residencial.Depositos_Lockers'
+            WHEN uso.ilicode = 'Residencial.Garajes_Cubiertos' THEN '806|Residencial.Garajes_Cubiertos'
+            WHEN uso.ilicode = 'Residencial.Garajes_En_PH' THEN '807|Residencial.Garajes_En_PH'
+            WHEN uso.ilicode = 'Residencial.Salon_Comunal' THEN '808|Residencial.Salon_Comunal'
+            WHEN uso.ilicode = 'Residencial.Secadero_Ropa' THEN '809|Residencial.Secadero_Ropa'
+            WHEN uso.ilicode = 'Residencial.Vivienda_Colonial' THEN '810|Residencial.Vivienda_Colonial'
+            WHEN uso.ilicode = 'Residencial.Vivienda_Colonial_en_PH' THEN '910|Residencial.Vivienda_Colonial_en_PH'
+            WHEN uso.ilicode = 'Residencial.Vivienda_Hasta_3_Pisos' THEN '811|Residencial.Vivienda_Hasta_3_Pisos'
+            WHEN uso.ilicode = 'Residencial.Vivienda_Hasta_3_Pisos_En_PH' THEN '812|Residencial.Vivienda_Hasta_3_Pisos_En_PH'
+            WHEN uso.ilicode = 'Residencial.Vivienda_Recreacional' THEN '813|Residencial.Vivienda_Recreacional'
+            WHEN uso.ilicode = 'Residencial.Vivienda_Recreacional_En_PH' THEN '814|Residencial.Vivienda_Recreacional_En_PH'
+
+            -- Comercial
+            WHEN uso.ilicode = 'Comercial.Bodegas_Comerciales_Grandes_Almacenes' THEN '815|Comercial.Bodegas_Comerciales_Grandes_Almacenes'
+            WHEN uso.ilicode = 'Comercial.Bodegas_Comerciales_en_PH' THEN '816|Comercial.Bodegas_Comerciales_en_PH'
+            WHEN uso.ilicode = 'Comercial.Centros_Comerciales' THEN '817|Comercial.Centros_Comerciales'
+            WHEN uso.ilicode = 'Comercial.Centros_Comerciales_en_PH' THEN '818|Comercial.Centros_Comerciales_en_PH'
+            WHEN uso.ilicode = 'Comercial.Clubes_Casinos' THEN '819|Comercial.Clubes_Casinos'
+            WHEN uso.ilicode = 'Comercial.Comercio' THEN '820|Comercial.Comercio'
+            WHEN uso.ilicode = 'Comercial.Comercio_Colonial' THEN '821|Comercial.Comercio_Colonial'
+            WHEN uso.ilicode = 'Comercial.Comercio_en_PH' THEN '822|Comercial.Comercio_en_PH'
+            WHEN uso.ilicode = 'Comercial.Hotel_Colonial' THEN '823|Comercial.Hotel_Colonial'
+            WHEN uso.ilicode = 'Comercial.Hoteles' THEN '824|Comercial.Hoteles'
+            WHEN uso.ilicode = 'Comercial.Hoteles_en_PH' THEN '825|Comercial.Hoteles_en_PH'
+            WHEN uso.ilicode = 'Comercial.Oficinas_Consultorios' THEN '826|Comercial.Oficinas_Consultorios'
+            WHEN uso.ilicode = 'Comercial.Oficinas_Consultorios_Coloniales' THEN '827|Comercial.Oficinas_Consultorios_Coloniales'
+            WHEN uso.ilicode = 'Comercial.Oficinas_Consultorios_en_PH' THEN '828|Comercial.Oficinas_Consultorios_en_PH'
+            WHEN uso.ilicode = 'Comercial.Parque_Diversiones' THEN '829|Comercial.Parque_Diversiones'
+            WHEN uso.ilicode = 'Comercial.Parqueaderos' THEN '830|Comercial.Parqueaderos'
+            WHEN uso.ilicode = 'Comercial.Parqueaderos_en_PH' THEN '831|Comercial.Parqueaderos_en_PH'
+            WHEN uso.ilicode = 'Comercial.Pensiones_y_Residencias' THEN '832|Comercial.Pensiones_y_Residencias'
+            WHEN uso.ilicode = 'Comercial.Plaza_Mercado' THEN '833|Comercial.Plaza_Mercado'
+            WHEN uso.ilicode = 'Comercial.Restaurante_Colonial' THEN '834|Comercial.Restaurante_Colonial'
+            WHEN uso.ilicode = 'Comercial.Restaurantes' THEN '835|Comercial.Restaurantes'
+            WHEN uso.ilicode = 'Comercial.Restaurantes_en_PH' THEN '836|Comercial.Restaurantes_en_PH'
+            WHEN uso.ilicode = 'Comercial.Teatro_Cinemas' THEN '837|Comercial.Teatro_Cinemas'
+            WHEN uso.ilicode = 'Comercial.Teatro_Cinemas_en_PH' THEN '838|Comercial.Teatro_Cinemas_en_PH'
+
+            -- Industrial
+            WHEN uso.ilicode = 'Industrial.Bodega_Casa_Bomba' THEN '839|Industrial.Bodega_Casa_Bomba'
+            WHEN uso.ilicode = 'Industrial.Bodegas_Casa_Bomba_en_PH' THEN '840|Industrial.Bodegas_Casa_Bomba_en_PH'
+            WHEN uso.ilicode = 'Industrial.Industrias' THEN '841|Industrial.Industrias'
+            WHEN uso.ilicode = 'Industrial.Industrias_en_PH' THEN '842|Industrial.Industrias_en_PH'
+            WHEN uso.ilicode = 'Industrial.Talleres' THEN '843|Industrial.Talleres'
+
+            -- Institucional
+            WHEN uso.ilicode = 'Institucional.Aulas_de_Clases' THEN '844|Institucional.Aulas_de_Clases'
+            WHEN uso.ilicode = 'Institucional.Biblioteca' THEN '845|Institucional.Biblioteca'
+            WHEN uso.ilicode = 'Institucional.Carceles' THEN '846|Institucional.Carceles'
+            WHEN uso.ilicode = 'Institucional.Casas_de_Culto' THEN '847|Institucional.Casas_de_Culto'
+            WHEN uso.ilicode = 'Institucional.Clinicas_Hospitales_Centros_Medicos' THEN '848|Institucional.Clinicas_Hospitales_Centros_Medicos'
+            WHEN uso.ilicode = 'Institucional.Colegio_y_Universidades' THEN '849|Institucional.Colegio_y_Universidades'
+            WHEN uso.ilicode = 'Institucional.Coliseos' THEN '850|Institucional.Coliseos'
+            WHEN uso.ilicode = 'Institucional.Entidad_Educativa_Colonial_Colegio_Colonial' THEN '851|Institucional.Entidad_Educativa_Colonial_Colegio_Colonial'
+            WHEN uso.ilicode = 'Institucional.Estadios' THEN '852|Institucional.Estadios'
+            WHEN uso.ilicode = 'Institucional.Fuertes_y_Castillos' THEN '853|Institucional.Fuertes_y_Castillos'
+            WHEN uso.ilicode = 'Institucional.Iglesia' THEN '854|Institucional.Iglesia'
+            WHEN uso.ilicode = 'Institucional.Iglesia_en_PH' THEN '855|Institucional.Iglesia_en_PH'
+            WHEN uso.ilicode = 'Institucional.Instalaciones_Militares' THEN '856|Institucional.Instalaciones_Militares'
+            WHEN uso.ilicode = 'Institucional.Jardin_Infantil_en_Casa' THEN '857|Institucional.Jardin_Infantil_en_Casa'
+            WHEN uso.ilicode = 'Institucional.Parque_Cementerio' THEN '858|Institucional.Parque_Cementerio'
+            WHEN uso.ilicode = 'Institucional.Planetario' THEN '859|Institucional.Planetario'
+            WHEN uso.ilicode = 'Institucional.Plaza_de_Toros' THEN '860|Institucional.Plaza_de_Toros'
+            WHEN uso.ilicode = 'Institucional.Puestos_de_Salud' THEN '861|Institucional.Puestos_de_Salud'
+            WHEN uso.ilicode = 'Institucional.Museos' THEN '862|Institucional.Museos'
+            WHEN uso.ilicode = 'Institucional.Seminarios_Conventos' THEN '863|Institucional.Seminarios_Conventos'
+            WHEN uso.ilicode = 'Institucional.Teatro' THEN '864|Institucional.Teatro'
+            WHEN uso.ilicode = 'Institucional.Unidad_Deportiva' THEN '865|Institucional.Unidad_Deportiva'
+            WHEN uso.ilicode = 'Institucional.Velodromo_Patinodromo' THEN '866|Institucional.Velodromo_Patinodromo'
+
+            -- Anexo
+            WHEN uso.ilicode = 'Anexo.Albercas_Banaderas' THEN '867|Anexo.Albercas_Banaderas'
+            WHEN uso.ilicode = 'Anexo.Beneficiaderos' THEN '868|Anexo.Beneficiaderos'
+            WHEN uso.ilicode = 'Anexo.Camaroneras' THEN '869|Anexo.Camaroneras'
+            WHEN uso.ilicode = 'Anexo.Canchas' THEN '870|Anexo.Canchas'
+            WHEN uso.ilicode = 'Anexo.Canchas_de_Tenis' THEN '871|Anexo.Canchas_de_Tenis'
+            WHEN uso.ilicode = 'Anexo.Carretera' THEN '872|Anexo.Carretera'
+            WHEN uso.ilicode = 'Anexo.Cerramiento' THEN '873|Anexo.Cerramiento'
+            WHEN uso.ilicode = 'Anexo.Cimientos_Estructura_Muros_y_Placa_Base' THEN '874|Anexo.Cimientos_Estructura_Muros_y_Placa_Base'
+            WHEN uso.ilicode = 'Anexo.Cocheras_Marraneras_Porquerizas' THEN '875|Anexo.Cocheras_Marraneras_Porquerizas'
+            WHEN uso.ilicode = 'Anexo.Construccion_en_Membrana_Arquitectonica' THEN '876|Anexo.Construccion_en_Membrana_Arquitectonica'
+            WHEN uso.ilicode = 'Anexo.Contenedor' THEN '877|Anexo.Contenedor'
+            WHEN uso.ilicode = 'Anexo.Corrales' THEN '878|Anexo.Corrales'
+            WHEN uso.ilicode = 'Anexo.Establos_Pesebreras_Caballerizas' THEN '879|Anexo.Establos_Pesebreras_Caballerizas'
+            WHEN uso.ilicode = 'Anexo.Estacion_Bombeo' THEN '880|Anexo.Estacion_Bombeo'
+            WHEN uso.ilicode = 'Anexo.Estacion_Sistema_Transporte' THEN '881|Anexo.Estacion_Sistema_Transporte'
+            WHEN uso.ilicode = 'Anexo.Galpones_Gallineros' THEN '882|Anexo.Galpones_Gallineros'
+            WHEN uso.ilicode = 'Anexo.Glamping' THEN '902|Anexo.Glamping'
+            WHEN uso.ilicode = 'Anexo.Hangar' THEN '883|Anexo.Hangar'
+            WHEN uso.ilicode = 'Anexo.Kioscos' THEN '884|Anexo.Kioscos'
+            WHEN uso.ilicode = 'Anexo.Lagunas_de_Oxidacion' THEN '885|Anexo.Lagunas_de_Oxidacion'
+            WHEN uso.ilicode = 'Anexo.Marquesinas_Patios_Cubiertos' THEN '886|Anexo.Marquesinas_Patios_Cubiertos'
+            WHEN uso.ilicode = 'Anexo.Muelles' THEN '887|Anexo.Muelles'
+            WHEN uso.ilicode = 'Anexo.Murallas' THEN '888|Anexo.Murallas'
+            WHEN uso.ilicode = 'Anexo.Pergolas' THEN '889|Anexo.Pergolas'
+            WHEN uso.ilicode = 'Anexo.Piscinas' THEN '890|Anexo.Piscinas'
+            WHEN uso.ilicode = 'Anexo.Pista_Aeropuerto' THEN '891|Anexo.Pista_Aeropuerto'
+            WHEN uso.ilicode = 'Anexo.Pozos' THEN '892|Anexo.Pozos'
+            WHEN uso.ilicode = 'Anexo.Ramadas_Cobertizos_Caneyes' THEN '893|Anexo.Ramadas_Cobertizos_Caneyes'
+            WHEN uso.ilicode = 'Anexo.Secaderos' THEN '894|Anexo.Secaderos'
+            WHEN uso.ilicode = 'Anexo.Silos' THEN '895|Anexo.Silos'
+            WHEN uso.ilicode = 'Anexo.Tanques' THEN '896|Anexo.Tanques'
+            WHEN uso.ilicode = 'Anexo.Toboganes' THEN '897|Anexo.Toboganes'
+            WHEN uso.ilicode = 'Anexo.Torre_de_Control' THEN '898|Anexo.Torre_de_Control'
+            WHEN uso.ilicode = 'Anexo.Torres_de_Enfriamiento' THEN '899|Anexo.Torres_de_Enfriamiento'
+            WHEN uso.ilicode = 'Anexo.Via_Ferrea' THEN '901|Anexo.Via_Ferrea'
+
+            -- Valor por defecto (si no coincide con ninguno de los anteriores)
+            ELSE 'ValorPorDefecto'
+        end) AS "IdUso",
+            max(CASE 
+                WHEN objconstipo.ilicode = 'Armazon.Madera' THEN '111|MADERA, TAPIA'
+                WHEN objconstipo.ilicode = 'Armazon.Prefabricado' THEN '112|PREFABRICADO'
+                WHEN objconstipo.ilicode = 'Armazon.Ladrillo_Bloque' THEN '113|LADRILLO,BLOQUE,MADERA INMUNIZADA'
+                WHEN objconstipo.ilicode = 'Armazon.Concreto_Hasta_Tres_Pisos' THEN '114|CONCRETO HASTA TRES PISOS'
+                WHEN objconstipo.ilicode = 'Armazon.Concreto_Cuatro_O_Mas_Pisos' THEN '115|CONCRETO CUATRO O MAS PISOS'
+                else NULL
+            END) AS "Armazon",
+            MAX(CASE 
+    -- Residencial
+			    WHEN objconstipo.ilicode = 'Armazon.Madera' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Armazon.Prefabricado' AND tipocal.ilicode = 'Residencial' THEN '1'
+			    WHEN objconstipo.ilicode = 'Armazon.Ladrillo_Bloque' AND tipocal.ilicode = 'Residencial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Armazon.Concreto_Hasta_Tres_Pisos' AND tipocal.ilicode = 'Residencial' THEN '4'
+			    WHEN objconstipo.ilicode = 'Armazon.Concreto_Cuatro_O_Mas_Pisos' AND tipocal.ilicode = 'Residencial' THEN '6'
+			
+			    -- Comercial
+			    WHEN objconstipo.ilicode = 'Armazon.Madera' AND tipocal.ilicode = 'Comercial' THEN '4'
+			    WHEN objconstipo.ilicode = 'Armazon.Prefabricado' AND tipocal.ilicode = 'Comercial' THEN '8'
+			    WHEN objconstipo.ilicode = 'Armazon.Ladrillo_Bloque' AND tipocal.ilicode = 'Comercial' THEN '12'
+			    WHEN objconstipo.ilicode = 'Armazon.Concreto_Hasta_Tres_Pisos' AND tipocal.ilicode = 'Comercial' THEN '22'
+			    WHEN objconstipo.ilicode = 'Armazon.Concreto_Cuatro_O_Mas_Pisos' AND tipocal.ilicode = 'Comercial' THEN '22'
+			
+			    -- Industrial
+			    WHEN objconstipo.ilicode = 'Armazon.Madera' AND tipocal.ilicode = 'Industrial' THEN '4'
+			    WHEN objconstipo.ilicode = 'Armazon.Prefabricado' AND tipocal.ilicode = 'Industrial' THEN '8'
+			    WHEN objconstipo.ilicode = 'Armazon.Ladrillo_Bloque' AND tipocal.ilicode = 'Industrial' THEN '12'
+			    WHEN objconstipo.ilicode = 'Armazon.Concreto_Hasta_Tres_Pisos' AND tipocal.ilicode = 'Industrial' THEN '22'
+			    WHEN objconstipo.ilicode = 'Armazon.Concreto_Cuatro_O_Mas_Pisos' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    
+			    ELSE NULL
+			END) AS "PuntosArmazon",       
+
+            max(CASE 
+                WHEN objconstipo.ilicode = 'Muros.Materiales_Desecho_Esterilla' THEN '121|MATERIALES DE DESECHOS,ESTERILLA'
+                WHEN objconstipo.ilicode = 'Muros.Bahareque_Adobe_Tapia' THEN '122|BAHAREQUE,ADOBE, TAPIA'
+                WHEN objconstipo.ilicode = 'Muros.Madera' THEN '123|MADERA'
+                WHEN objconstipo.ilicode = 'Muros.Concreto_Prefabricado' THEN '124|CONCRETO PREFABRICADO'
+                WHEN objconstipo.ilicode = 'Muros.Bloque_Ladrillo' THEN '125|BLOQUE,LADRILLO,MADERA FINA'
+                else NULL
+            END) AS "Muro",
+            
+            MAX(CASE 
+			    -- Residencial
+			    WHEN objconstipo.ilicode = 'Muros.Materiales_Desecho_Esterilla' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Muros.Bahareque_Adobe_Tapia' AND tipocal.ilicode = 'Residencial' THEN '1'
+			    WHEN objconstipo.ilicode = 'Muros.Madera' AND tipocal.ilicode = 'Residencial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Muros.Concreto_Prefabricado' AND tipocal.ilicode = 'Residencial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Muros.Bloque_Ladrillo' AND tipocal.ilicode = 'Residencial' THEN '4'
+			
+			    -- Comercial
+			    WHEN objconstipo.ilicode = 'Muros.Materiales_Desecho_Esterilla' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Muros.Bahareque_Adobe_Tapia' AND tipocal.ilicode = 'Comercial' THEN '1'
+			    WHEN objconstipo.ilicode = 'Muros.Madera' AND tipocal.ilicode = 'Comercial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Muros.Concreto_Prefabricado' AND tipocal.ilicode = 'Comercial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Muros.Bloque_Ladrillo' AND tipocal.ilicode = 'Comercial' THEN '4'
+			
+			    -- Industrial
+			    WHEN objconstipo.ilicode = 'Muros.Materiales_Desecho_Esterilla' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Muros.Bahareque_Adobe_Tapia' AND tipocal.ilicode = 'Industrial' THEN '1'
+			    WHEN objconstipo.ilicode = 'Muros.Madera' AND tipocal.ilicode = 'Industrial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Muros.Concreto_Prefabricado' AND tipocal.ilicode = 'Industrial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Muros.Bloque_Ladrillo' AND tipocal.ilicode = 'Industrial' THEN '4'
+			    
+			    ELSE NULL
+			END) AS "PuntosMuros",
+            
+            MAX(CASE 
+                WHEN objconstipo.ilicode = 'Cubierta.Materiales_Desecho_Telas_Asfalticas' THEN '131|MATERIALES DE DESECHO'
+                WHEN objconstipo.ilicode = 'Cubierta.Zinc_Teja_De_Barro_Eternit_Rustico' THEN '132|ZINC,TEJA DE BARRO'
+                WHEN objconstipo.ilicode = 'Cubierta.Entrepiso_Cubierta_Provisional_Prefabricado' THEN '133|ENTREPISO'
+                WHEN objconstipo.ilicode = 'Cubierta.Eternit_O_Teja_De_Barro_Cubierta_Sencilla' THEN '134|ETERNIT O TEJA DE BARRO'
+                WHEN objconstipo.ilicode = 'Cubierta.Azotea_Aluminio_Placa_Sencilla_Con_Eternit' THEN '135|AZOTEA, ALUMINIO,PLACAS CON ETERNIT'
+                WHEN objconstipo.ilicode = 'Cubierta.Placa_Impermeabilizada_Cubierta_Lujosa_U_Ornamental' THEN '136|PLACA IMPERMEABILI, CUBIERTA DE LUJO'
+                else NULL
+            END) AS "Cubierta",
+            
+            
+            MAX(CASE 
+    -- Residencial
+			    WHEN objconstipo.ilicode = 'Cubierta.Materiales_Desecho_Telas_Asfalticas' AND tipocal.ilicode = 'Residencial' THEN '1'
+			    WHEN objconstipo.ilicode = 'Cubierta.Zinc_Teja_De_Barro_Eternit_Rustico' AND tipocal.ilicode = 'Residencial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Cubierta.Entrepiso_Cubierta_Provisional_Prefabricado' AND tipocal.ilicode = 'Residencial' THEN '6'
+			    WHEN objconstipo.ilicode = 'Cubierta.Eternit_O_Teja_De_Barro_Cubierta_Sencilla' AND tipocal.ilicode = 'Residencial' THEN '9'
+			    WHEN objconstipo.ilicode = 'Cubierta.Azotea_Aluminio_Placa_Sencilla_Con_Eternit' AND tipocal.ilicode = 'Residencial' THEN '13'
+			    WHEN objconstipo.ilicode = 'Cubierta.Placa_Impermeabilizada_Cubierta_Lujosa_U_Ornamental' AND tipocal.ilicode = 'Residencial' THEN '16'
+			
+			    -- Comercial
+			    WHEN objconstipo.ilicode = 'Cubierta.Materiales_Desecho_Telas_Asfalticas' AND tipocal.ilicode = 'Comercial' THEN '1'
+			    WHEN objconstipo.ilicode = 'Cubierta.Zinc_Teja_De_Barro_Eternit_Rustico' AND tipocal.ilicode = 'Comercial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Cubierta.Entrepiso_Cubierta_Provisional_Prefabricado' AND tipocal.ilicode = 'Comercial' THEN '6'
+			    WHEN objconstipo.ilicode = 'Cubierta.Eternit_O_Teja_De_Barro_Cubierta_Sencilla' AND tipocal.ilicode = 'Comercial' THEN '9'
+			    WHEN objconstipo.ilicode = 'Cubierta.Azotea_Aluminio_Placa_Sencilla_Con_Eternit' AND tipocal.ilicode = 'Comercial' THEN '13'
+			    WHEN objconstipo.ilicode = 'Cubierta.Placa_Impermeabilizada_Cubierta_Lujosa_U_Ornamental' AND tipocal.ilicode = 'Comercial' THEN '16'
+			
+			    -- Industrial
+			    WHEN objconstipo.ilicode = 'Cubierta.Materiales_Desecho_Telas_Asfalticas' AND tipocal.ilicode = 'Industrial' THEN '1'
+			    WHEN objconstipo.ilicode = 'Cubierta.Zinc_Teja_De_Barro_Eternit_Rustico' AND tipocal.ilicode = 'Industrial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Cubierta.Entrepiso_Cubierta_Provisional_Prefabricado' AND tipocal.ilicode = 'Industrial' THEN '6'
+			    WHEN objconstipo.ilicode = 'Cubierta.Eternit_O_Teja_De_Barro_Cubierta_Sencilla' AND tipocal.ilicode = 'Industrial' THEN '9'
+			    WHEN objconstipo.ilicode = 'Cubierta.Azotea_Aluminio_Placa_Sencilla_Con_Eternit' AND tipocal.ilicode = 'Industrial' THEN '13'
+			    WHEN objconstipo.ilicode = 'Cubierta.Placa_Impermeabilizada_Cubierta_Lujosa_U_Ornamental' AND tipocal.ilicode = 'Industrial' THEN '0'
+			
+			    ELSE NULL
+			END) AS "PuntosCubierta",
+            
+            
+            MAX(CASE
+                    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode  = 'Malo' THEN '141|MALO'
+                    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Regular' THEN '142|REGULAR'
+                    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Bueno' THEN '143|BUENO'
+                    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Excelente' THEN '144|Excelente'
+                    ELSE NULL
+                END) AS "Conservacion",
+                
+            MAX(CASE 
+    -- Residencial
+				    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode  = 'Malo' AND tipocal.ilicode = 'Residencial' THEN '0'
+				    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Regular' AND tipocal.ilicode = 'Residencial' THEN '2'
+				    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Bueno' AND tipocal.ilicode = 'Residencial' THEN '4'
+				    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Excelente' AND tipocal.ilicode = 'Residencial' THEN '5'
+				
+				    -- Comercial
+				    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Malo' AND tipocal.ilicode = 'Comercial' THEN '0'
+				    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Regular' AND tipocal.ilicode = 'Comercial' THEN '2'
+				    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Bueno' AND tipocal.ilicode = 'Comercial' THEN '4'
+				    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Excelente' AND tipocal.ilicode = 'Comercial' THEN '5'
+				
+				    -- Industrial
+				    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Malo' AND tipocal.ilicode = 'Industrial' THEN '0'
+				    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Regular' AND tipocal.ilicode = 'Industrial' THEN '2'
+				    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Bueno' AND tipocal.ilicode = 'Industrial' THEN '4'
+				    WHEN clasecalificacion.ilicode = 'Estructura' AND conservacion.ilicode = 'Excelente' AND tipocal.ilicode = 'Industrial' THEN '5'
+				
+				    ELSE NULL
+				END) AS "PuntosConservacionEstructura",    
+                
+                
+            MAX(CASE 
+                WHEN objconstipo.ilicode = 'Fachada.Pobre' THEN '211|POBRE'
+                WHEN objconstipo.ilicode = 'Fachada.Sencilla' THEN '212|SENCILLA'
+                WHEN objconstipo.ilicode = 'Fachada.Regular' THEN '213|REGULAR'
+                WHEN objconstipo.ilicode = 'Fachada.Buena' THEN '214|BUENA'
+                WHEN objconstipo.ilicode = 'Fachada.Lujosa' THEN '215|LUJOSA'
+                else NULL
+            END )AS "Fachada",
+            
+            
+        	MAX(CASE 
+    -- Residencial
+			    WHEN objconstipo.ilicode = 'Fachada.Pobre' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Fachada.Sencilla' AND tipocal.ilicode = 'Residencial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Fachada.Regular' AND tipocal.ilicode = 'Residencial' THEN '4'
+			    WHEN objconstipo.ilicode = 'Fachada.Buena' AND tipocal.ilicode = 'Residencial' THEN '6'
+			    WHEN objconstipo.ilicode = 'Fachada.Lujosa' AND tipocal.ilicode = 'Residencial' THEN '8'
+			
+			    -- Comercial
+			    WHEN objconstipo.ilicode = 'Fachada.Pobre' AND tipocal.ilicode = 'Comercial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Fachada.Sencilla' AND tipocal.ilicode = 'Comercial' THEN '4'
+			    WHEN objconstipo.ilicode = 'Fachada.Regular' AND tipocal.ilicode = 'Comercial' THEN '6'
+			    WHEN objconstipo.ilicode = 'Fachada.Buena' AND tipocal.ilicode = 'Comercial' THEN '8'
+			    WHEN objconstipo.ilicode = 'Fachada.Lujosa' AND tipocal.ilicode = 'Comercial' THEN '12'
+			
+			    -- Industrial
+			    WHEN objconstipo.ilicode = 'Fachada.Pobre' AND tipocal.ilicode = 'Industrial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Fachada.Sencilla' AND tipocal.ilicode = 'Industrial' THEN '4'
+			    WHEN objconstipo.ilicode = 'Fachada.Regular' AND tipocal.ilicode = 'Industrial' THEN '6'
+			    WHEN objconstipo.ilicode = 'Fachada.Buena' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Fachada.Lujosa' AND tipocal.ilicode = 'Industrial' THEN '0'
+			
+			    ELSE NULL
+			END) AS "PuntosFachada",
+            MAX(CASE 
+                WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Sin_Cubrimiento' THEN '221|SIN CUBRIMIENTO'
+                WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Paniete_Papel_Comun_Ladrillo_Prensado' THEN '222|PAÑETE, PAPEL, COMÚN, LADRILLO PRENSADO'
+                WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Estuco_Ceramica_Papel_Fino' THEN '223|ESTUCO, CERÁMICA, PAPEL FINO'
+                WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Madera_Piedra_Ornamental' THEN '224|MADERA, PIEDRA ORNAMENT. LADRILLO FINO'
+                WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Marmol_Lujosos_Otros' THEN '225|MÁRMOL, LUJOSOS, OTROS'
+                else NULL
+            END) AS "Cubrimiento Muro",
+            
+            
+            MAX(CASE 
+			    -- Residencial
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Sin_Cubrimiento' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Paniete_Papel_Comun_Ladrillo_Prensado' AND tipocal.ilicode = 'Residencial' THEN '1'
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Estuco_Ceramica_Papel_Fino' AND tipocal.ilicode = 'Residencial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Madera_Piedra_Ornamental' AND tipocal.ilicode = 'Residencial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Marmol_Lujosos_Otros' AND tipocal.ilicode = 'Residencial' THEN '4'
+			
+			    -- Comercial
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Sin_Cubrimiento' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Paniete_Papel_Comun_Ladrillo_Prensado' AND tipocal.ilicode = 'Comercial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Estuco_Ceramica_Papel_Fino' AND tipocal.ilicode = 'Comercial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Madera_Piedra_Ornamental' AND tipocal.ilicode = 'Comercial' THEN '5'
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Marmol_Lujosos_Otros' AND tipocal.ilicode = 'Comercial' THEN '7'
+			
+			    -- Industrial
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Sin_Cubrimiento' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Paniete_Papel_Comun_Ladrillo_Prensado' AND tipocal.ilicode = 'Industrial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Estuco_Ceramica_Papel_Fino' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Madera_Piedra_Ornamental' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Cubrimiento_Muros.Marmol_Lujosos_Otros' AND tipocal.ilicode = 'Industrial' THEN '0'
+			
+			    ELSE NULL
+			END) AS "PuntosCubrimientoMuro",
+            MAX(CASE 
+                WHEN objconstipo.ilicode = 'Piso.Tierra_Pisada' THEN '231|TIERRA PISADA'
+                WHEN objconstipo.ilicode = 'Piso.Cemento_Madera_Burda' THEN '232|CEMENTO, MADERA BURDA'
+                WHEN objconstipo.ilicode = 'Piso.Baldosa_Comun_De_Cemento_Tablon_Ladrillo' THEN '233|BALDOSA COMÚN DE CEMENTO, TABLÓN LADR'
+                WHEN objconstipo.ilicode = 'Piso.Liston_Machihembrado' THEN '234|LISTÓN MACHIMEMBRADO'
+                WHEN objconstipo.ilicode = 'Piso.Tableta_Caucho_Acrilico_Granito_Baldosa_Fina' THEN '235|TABLETA, CAUCHO, ACRÍLICO, GRANITO, BALDOSAS FINA, CERÁMICA'
+                WHEN objconstipo.ilicode = 'Piso.Parquet_Alfombra_Retal_Marmol' THEN '236|PARQUET, ALFONFRA, RETAL DE MÁRMOL'
+                else NULL
+            END)  AS "Piso",
+            
+            MAX(CASE 
+			    -- Residencial
+			    WHEN objconstipo.ilicode = 'Piso.Tierra_Pisada' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Piso.Cemento_Madera_Burda' AND tipocal.ilicode = 'Residencial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Piso.Baldosa_Comun_De_Cemento_Tablon_Ladrillo' AND tipocal.ilicode = 'Residencial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Piso.Liston_Machihembrado' AND tipocal.ilicode = 'Residencial' THEN '4'
+			    WHEN objconstipo.ilicode = 'Piso.Tableta_Caucho_Acrilico_Granito_Baldosa_Fina' AND tipocal.ilicode = 'Residencial' THEN '6'
+			    WHEN objconstipo.ilicode = 'Piso.Parquet_Alfombra_Retal_Marmol' AND tipocal.ilicode = 'Residencial' THEN '8'
+			
+			    -- Comercial
+			    WHEN objconstipo.ilicode = 'Piso.Tierra_Pisada' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Piso.Cemento_Madera_Burda' AND tipocal.ilicode = 'Comercial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Piso.Baldosa_Comun_De_Cemento_Tablon_Ladrillo' AND tipocal.ilicode = 'Comercial' THEN '5'
+			    WHEN objconstipo.ilicode = 'Piso.Liston_Machihembrado' AND tipocal.ilicode = 'Comercial' THEN '7'
+			    WHEN objconstipo.ilicode = 'Piso.Tableta_Caucho_Acrilico_Granito_Baldosa_Fina' AND tipocal.ilicode = 'Comercial' THEN '9'
+			    WHEN objconstipo.ilicode = 'Piso.Parquet_Alfombra_Retal_Marmol' AND tipocal.ilicode = 'Comercial' THEN '11'
+			
+			    -- Industrial
+			    WHEN objconstipo.ilicode = 'Piso.Tierra_Pisada' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Piso.Cemento_Madera_Burda' AND tipocal.ilicode = 'Industrial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Piso.Baldosa_Comun_De_Cemento_Tablon_Ladrillo' AND tipocal.ilicode = 'Industrial' THEN '5'
+			    WHEN objconstipo.ilicode = 'Piso.Liston_Machihembrado' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Piso.Tableta_Caucho_Acrilico_Granito_Baldosa_Fina' AND tipocal.ilicode = 'Industrial' THEN '9'
+			    WHEN objconstipo.ilicode = 'Piso.Parquet_Alfombra_Retal_Marmol' AND tipocal.ilicode = 'Industrial' THEN '0'
+			
+			    ELSE NULL
+			END) AS "PuntosPiso"
+            
+            MAX(CASE
+                WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Malo' THEN '241|MALO'
+                WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Regular' THEN '242|REGULAR'
+                WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Bueno' THEN '243|BUENO'
+                WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Excelente' THEN 'Excelente'
+                ELSE NULL
+                END) AS "ConservacionPrincipales",
+                
+   		 MAX(CASE 
+    -- Residencial
+			    WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Malo' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Regular' AND tipocal.ilicode = 'Residencial' THEN '2'
+			    WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Bueno' AND tipocal.ilicode = 'Residencial' THEN '4'
+			    WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Excelente' AND tipocal.ilicode = 'Residencial' THEN '5'
+			
+			    -- Comercial
+			    WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Malo' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Regular' AND tipocal.ilicode = 'Comercial' THEN '2'
+			    WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Bueno' AND tipocal.ilicode = 'Comercial' THEN '4'
+			    WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Excelente' AND tipocal.ilicode = 'Comercial' THEN '5'
+			
+			    -- Industrial
+			    WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Malo' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Regular' AND tipocal.ilicode = 'Industrial' THEN '2'
+			    WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Bueno' AND tipocal.ilicode = 'Industrial' THEN '4'
+			    WHEN clasecalificacion.ilicode = 'Acabados_Principales' AND conservacion.ilicode = 'Excelente' AND tipocal.ilicode = 'Industrial' THEN '5'
+			
+			    ELSE NULL
+			END) AS "PuntosConservacionPrincipales",
+                
+            MAX(CASE 
+                WHEN objconstipo.ilicode = 'Tamanio_Banio.Sin_Banio' THEN '311|SIN BAÑO'
+                WHEN objconstipo.ilicode = 'Tamanio_Banio.Pequenio' THEN '312|PEQUEÑO'
+                WHEN objconstipo.ilicode = 'Tamanio_Banio.Mediano' THEN '313|MEDIANO'
+                WHEN objconstipo.ilicode = 'Tamanio_Banio.Grande' THEN '314|GRANDE'
+                else NULL
+            END) AS "TamanioBanio",
+            
+            MAX(CASE 
+    -- Residencial
+			    WHEN objconstipo.ilicode = 'Tamanio_Banio.Sin_Banio' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Banio.Pequenio' AND tipocal.ilicode = 'Residencial' THEN '1'
+			    WHEN objconstipo.ilicode = 'Tamanio_Banio.Mediano' AND tipocal.ilicode = 'Residencial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Tamanio_Banio.Grande' AND tipocal.ilicode = 'Residencial' THEN '3'
+			
+			    -- Comercial
+			    WHEN objconstipo.ilicode = 'Tamanio_Banio.Sin_Banio' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Banio.Pequenio' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Banio.Mediano' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Banio.Grande' AND tipocal.ilicode = 'Comercial' THEN '0'
+			
+			    -- Industrial
+			    WHEN objconstipo.ilicode = 'Tamanio_Banio.Sin_Banio' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Banio.Pequenio' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Banio.Mediano' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Banio.Grande' AND tipocal.ilicode = 'Industrial' THEN '0'
+			
+			    ELSE NULL
+			END) AS "PuntosTamanioBanio",
+            
+            
+            MAX(CASE 
+                WHEN objconstipo.ilicode = 'Enchape_Banio.Sin_Cubrimiento' THEN '321|SIN CUBRIMIENTO'
+                WHEN objconstipo.ilicode = 'Enchape_Banio.Paniete_Baldosa_Comun_De_Cemento' THEN '322|PAÑETE, BALDOSA COMÚN DE CEMENTO'
+                WHEN objconstipo.ilicode = 'Enchape_Banio.Baldosin_Unicolor_Papel_Comun' THEN '323|BALDOSÍN, PAPEL COMÚN'
+                WHEN objconstipo.ilicode = 'Enchape_Banio.Baldosin_Decorado_Papel_Fino' THEN '324|CRISTANAC. GRANITO, PAPEL FINO'
+                WHEN objconstipo.ilicode = 'Enchape_Banio.Ceramica_Cristanac_Granito' THEN '325|CERÁMICA'
+                WHEN objconstipo.ilicode = 'Enchape_Banio.Marmol_Enchape_Lujoso' THEN '326|MÁRMOL, ENCHAPE LUJOSO'
+                else NULL
+            END)
+            AS "EnchapesBanio",
+            
+            MAX(CASE 
+    -- Residencial
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Sin_Cubrimiento' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Paniete_Baldosa_Comun_De_Cemento' AND tipocal.ilicode = 'Residencial' THEN '1'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Baldosin_Unicolor_Papel_Comun' AND tipocal.ilicode = 'Residencial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Baldosin_Decorado_Papel_Fino' AND tipocal.ilicode = 'Residencial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Ceramica_Cristanac_Granito' AND tipocal.ilicode = 'Residencial' THEN '4'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Marmol_Enchape_Lujoso' AND tipocal.ilicode = 'Residencial' THEN '5'
+			
+			    -- Comercial
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Sin_Cubrimiento' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Paniete_Baldosa_Comun_De_Cemento' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Baldosin_Unicolor_Papel_Comun' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Baldosin_Decorado_Papel_Fino' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Ceramica_Cristanac_Granito' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Marmol_Enchape_Lujoso' AND tipocal.ilicode = 'Comercial' THEN '0'
+			
+			    -- Industrial
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Sin_Cubrimiento' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Paniete_Baldosa_Comun_De_Cemento' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Baldosin_Unicolor_Papel_Comun' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Baldosin_Decorado_Papel_Fino' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Ceramica_Cristanac_Granito' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Banio.Marmol_Enchape_Lujoso' AND tipocal.ilicode = 'Industrial' THEN '0'
+			
+			    ELSE NULL
+			END) AS "PuntosEnchapesBanio",
+            
+            MAX(CASE 
+                WHEN objconstipo.ilicode = 'Mobiliario_Banio.Pobre' THEN '331|POBRE'
+                WHEN objconstipo.ilicode = 'Mobiliario_Banio.Sencillo' THEN '332|SENCILLO'
+                WHEN objconstipo.ilicode = 'Mobiliario_Banio.Regular' THEN '333|REGULAR'
+                WHEN objconstipo.ilicode = 'Mobiliario_Banio.Bueno' THEN '334|BUENO'
+                WHEN objconstipo.ilicode = 'Mobiliario_Banio.Lujoso' THEN '335|LUJOSO'
+                else NULL
+            END)
+            AS "MobiliarioBanio",
+            
+            MAX(CASE 
+    -- Residencial
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Pobre' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Sencillo' AND tipocal.ilicode = 'Residencial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Regular' AND tipocal.ilicode = 'Residencial' THEN '6'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Bueno' AND tipocal.ilicode = 'Residencial' THEN '9'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Lujoso' AND tipocal.ilicode = 'Residencial' THEN '11'
+			
+			    -- Comercial
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Pobre' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Sencillo' AND tipocal.ilicode = 'Comercial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Regular' AND tipocal.ilicode = 'Comercial' THEN '6'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Bueno' AND tipocal.ilicode = 'Comercial' THEN '9'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Lujoso' AND tipocal.ilicode = 'Comercial' THEN '15'
+			
+			    -- Industrial
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Pobre' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Sencillo' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Regular' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Bueno' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Banio.Lujoso' AND tipocal.ilicode = 'Industrial' THEN '0'
+			
+			    ELSE NULL
+			END) AS "PuntosMobiliarioBanio",
+            MAX(CASE
+                WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Malo' THEN '341|MALO'
+                WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Regular' THEN '342|REGULAR'
+                WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Bueno' THEN '343|BUENO'
+                WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Excelente' THEN '344|EXCELENTE'
+                ELSE NULL
+            END) AS "ConservacionBanio",
+                
+            MAX(CASE
+    -- Residencial
+			    WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Malo' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Regular' AND tipocal.ilicode = 'Residencial' THEN '2'
+			    WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Bueno' AND tipocal.ilicode = 'Residencial' THEN '4'
+			    WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Excelente' AND tipocal.ilicode = 'Residencial' THEN '5'
+			
+			    -- Comercial
+			    WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Malo' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Regular' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Bueno' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Excelente' AND tipocal.ilicode = 'Comercial' THEN '0'
+			
+			    -- Industrial
+			    WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Malo' AND tipocal.ilicode = 'Industrial' THEN '3'
+			    WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Regular' AND tipocal.ilicode = 'Industrial' THEN '5'
+			    WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Bueno' AND tipocal.ilicode = 'Industrial' THEN '7'
+			    WHEN clasecalificacion.ilicode = 'Banio' AND conservacion.ilicode = 'Excelente' AND tipocal.ilicode = 'Industrial' THEN '9'
+			
+			    ELSE NULL
+			END) AS "PuntosConservacionBanio",
+            MAX(CASE 
+                WHEN objconstipo.ilicode = 'Tamanio_Cocina.Sin_Cocina' THEN '411|SIN COCINA'
+                WHEN objconstipo.ilicode = 'Tamanio_Cocina.Pequenia' THEN '412|PEQUEÑA'
+                WHEN objconstipo.ilicode = 'Tamanio_Cocina.Mediana' THEN '413|MEDIANA'
+                WHEN objconstipo.ilicode = 'Tamanio_Cocina.Grande' THEN '414|GRANDE'
+                else NULL
+            END) AS "TamanioCocina",
+            
+            MAX(CASE
+			    -- Residencial
+			    WHEN objconstipo.ilicode = 'Tamanio_Cocina.Sin_Cocina' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Cocina.Pequenia' AND tipocal.ilicode = 'Residencial' THEN '1'
+			    WHEN objconstipo.ilicode = 'Tamanio_Cocina.Mediana' AND tipocal.ilicode = 'Residencial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Tamanio_Cocina.Grande' AND tipocal.ilicode = 'Residencial' THEN '3'
+			
+			    -- Comercial
+			    WHEN objconstipo.ilicode = 'Tamanio_Cocina.Sin_Cocina' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Cocina.Pequenia' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Cocina.Mediana' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Cocina.Grande' AND tipocal.ilicode = 'Comercial' THEN '0'
+			
+			    -- Industrial
+			    WHEN objconstipo.ilicode = 'Tamanio_Cocina.Sin_Cocina' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Cocina.Pequenia' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Cocina.Mediana' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Tamanio_Cocina.Grande' AND tipocal.ilicode = 'Industrial' THEN '0'
+			
+			    ELSE NULL
+			END) AS "PuntosTamanioCocina",
+            MAX(CASE 
+                WHEN objconstipo.ilicode = 'Enchape_Cocina.Sin_Cubrimiento' THEN '421|SIN CUBRIMIENTO'
+                WHEN objconstipo.ilicode = 'Enchape_Cocina.Paniete_Baldosa_De_Cemento' THEN '422|PAÑETE, BALDOSA COMÚN DE CEMENTO'
+                WHEN objconstipo.ilicode = 'Enchape_Cocina.Baldosin_Unicolor_Papel_Comun' THEN '423|BALDOSÍN, PAPEL COMÚN'
+                WHEN objconstipo.ilicode = 'Enchape_Cocina.Baldosin_Decorado_Papel_Fino' THEN '424|CRISTANAC. GRANITO, PAPEL FINO'
+                WHEN objconstipo.ilicode = 'Enchape_Cocina.Ceramica_Cristanac_Granito' THEN '425|CERÁMICA'
+                WHEN objconstipo.ilicode = 'Enchape_Cocina.Marmol_Enchape_Lujoso' THEN '426|MÁRMOL, ENCHAPE LUJOSO'
+                else NULL
+            end) AS "Enchape",
+            
+            MAX(CASE 
+    -- Residencial
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Sin_Cubrimiento' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Paniete_Baldosa_De_Cemento' AND tipocal.ilicode = 'Residencial' THEN '1'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Baldosin_Unicolor_Papel_Comun' AND tipocal.ilicode = 'Residencial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Baldosin_Decorado_Papel_Fino' AND tipocal.ilicode = 'Residencial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Ceramica_Cristanac_Granito' AND tipocal.ilicode = 'Residencial' THEN '4'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Marmol_Enchape_Lujoso' AND tipocal.ilicode = 'Residencial' THEN '5'
+			
+			    -- Comercial
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Sin_Cubrimiento' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Paniete_Baldosa_De_Cemento' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Baldosin_Unicolor_Papel_Comun' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Baldosin_Decorado_Papel_Fino' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Ceramica_Cristanac_Granito' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Marmol_Enchape_Lujoso' AND tipocal.ilicode = 'Comercial' THEN '0'
+			
+			    -- Industrial
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Sin_Cubrimiento' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Paniete_Baldosa_De_Cemento' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Baldosin_Unicolor_Papel_Comun' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Baldosin_Decorado_Papel_Fino' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Ceramica_Cristanac_Granito' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Enchape_Cocina.Marmol_Enchape_Lujoso' AND tipocal.ilicode = 'Industrial' THEN '0'
+			
+			    ELSE NULL
+			END) AS "PuntosEnchapeCocina",
+            
+            MAX(CASE
+                WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Pobre' THEN '431|POBRE'
+                WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Sencillo' THEN '432|SENCILLO'
+                WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Regular' THEN '433|REGULAR'
+                WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Bueno' THEN '434|BUENO'
+                WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Lujoso' THEN '435|LUJOSO'
+                else NULL
+            END) AS "MobiliarioCocina",
+            
+            MAX(CASE 
+    -- Residencial
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Pobre' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Sencillo' AND tipocal.ilicode = 'Residencial' THEN '2'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Regular' AND tipocal.ilicode = 'Residencial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Bueno' AND tipocal.ilicode = 'Residencial' THEN '4'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Lujoso' AND tipocal.ilicode = 'Residencial' THEN '6'
+			
+			    -- Comercial
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Pobre' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Sencillo' AND tipocal.ilicode = 'Comercial' THEN '3'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Regular' AND tipocal.ilicode = 'Comercial' THEN '6'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Bueno' AND tipocal.ilicode = 'Comercial' THEN '9'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Lujoso' AND tipocal.ilicode = 'Comercial' THEN '13'
+			
+			    -- Industrial
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Pobre' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Sencillo' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Regular' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Bueno' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN objconstipo.ilicode = 'Mobiliario_Cocina.Lujoso' AND tipocal.ilicode = 'Industrial' THEN '0'
+			
+			    ELSE NULL
+			END) AS "PuntosMobiliarioCocina",
+            
+            MAX(CASE
+                WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Malo' THEN '441|MALO'
+                WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Regular' THEN '442|REGULAR'
+                WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Bueno' THEN '443|BUENO'
+                WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Excelente' THEN '444|EXCELENTE'
+                ELSE NULL
+            END) AS "ConservacionCocina",
+            
+            MAX(CASE 
+    -- Residencial
+			    WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Malo' AND tipocal.ilicode = 'Residencial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Regular' AND tipocal.ilicode = 'Residencial' THEN '2'
+			    WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Bueno' AND tipocal.ilicode = 'Residencial' THEN '4'
+			    WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Excelente' AND tipocal.ilicode = 'Residencial' THEN '5'
+			
+			    -- Comercial
+			    WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Malo' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Regular' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Bueno' AND tipocal.ilicode = 'Comercial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Excelente' AND tipocal.ilicode = 'Comercial' THEN '0'
+			
+			    -- Industrial
+			    WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Malo' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Regular' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Bueno' AND tipocal.ilicode = 'Industrial' THEN '0'
+			    WHEN clasecalificacion.ilicode = 'Cocina' AND conservacion.ilicode = 'Excelente' AND tipocal.ilicode = 'Industrial' THEN '0'
+			
+			    ELSE NULL
+			END) AS "PuntosConservacionCocina",
+            
+            MAX(CASE 
+                WHEN objconstipo.ilicode = 'Cerchas_Complemento_Industria.Madera' THEN '511|MADERA RÚSTICA'
+                WHEN objconstipo.ilicode = 'Cerchas_Complemento_Industria.Metalica_Liviana' THEN '512|METÁLICA O DE MADERA LIVIANA'
+                WHEN objconstipo.ilicode = 'Cerchas_Complemento_Industria.Metalica_Mediana' THEN '513|METÁLICA O DE MADERA MEDIANA'
+                WHEN objconstipo.ilicode = 'Cerchas_Complemento_Industria.Metalica_Pesada' THEN '514|METÁLICA PESADA'
+                else NULL
+            END)
+            AS "ComplementoIndustrial",
+            
+            MAX(CASE 
+			    -- Residencial
+			    WHEN objconstipo.ilicode = 'Cerchas_Complemento_Industria.Madera' AND tipocal.ilicode = 'Residencial' THEN '6'
+			    WHEN objconstipo.ilicode = 'Cerchas_Complemento_Industria.Metalica_Liviana' AND tipocal.ilicode = 'Residencial' THEN '12'
+			    WHEN objconstipo.ilicode = 'Cerchas_Complemento_Industria.Metalica_Mediana' AND tipocal.ilicode = 'Residencial' THEN '22'
+			    WHEN objconstipo.ilicode = 'Cerchas_Complemento_Industria.Metalica_Pesada' AND tipocal.ilicode = 'Residencial' THEN '34' 
+				WHEN objconstipo.ilicode = 'Cerchas_Complemento_Industria.Altura' AND tipocal.ilicode = 'Residencial' THEN '8'
+			
+			    ELSE NULL
+			END) AS "PuntosComplementoIndustrial",			
+            null as "Radicado"
+
+            from {esquema}.cr_grupocalificacion grupocalificacion
+            left join {esquema}.cr_clasecalificaciontipo clasecalificacion on grupocalificacion.clase_calificaciontipo =clasecalificacion.t_id
+            left join {esquema}.cr_estadoconservaciontipo conservacion on grupocalificacion.conservacion =conservacion.t_id
+            left join {esquema}.cr_calificacionconvencional convencional on grupocalificacion.cr_calificacion_convencional =convencional.t_id
+            left join {esquema}.cr_caracteristicasunidadconstruccion caracteristica on caracteristica.t_id=convencional.cr_carascteristicasunidadconstrccn_cr_clfccncnstrccion
+            left join {esquema}.cr_usouconstipo uso on caracteristica.uso=uso.t_id
+            left join {esquema}.cr_calificartipo tipocal on convencional.tipo_calificar =tipocal.t_id
+            left join {esquema}.cr_unidadconstruccion unidad on caracteristica.t_id =unidad.cr_caracteristicasunidadconstruccion 
+            left join {esquema}.col_uebaunit ueba on unidad.t_id =ueba.ue_cr_unidadconstruccion 
+            left join {esquema}.lc_predio predio on ueba.baunit=predio.t_id 
+            left join {esquema}.cr_objetoconstruccion objetoconst on grupocalificacion.t_id= objetoconst.cr_grupo_calificacion
+            left join {esquema}.cr_objetoconstrucciontipo objconstipo on objetoconst.tipo_objeto_construccion =objconstipo.t_id 
+            group by caracteristica.t_id
+        """,
+        "ConstruccionesGenerales":f"""
+        SELECT 
+        unidad.t_id as "Secuencia",
+        predio.n_ficha as "NroFicha",
+        '001|ACUEDUCTO' AS "Descripcion"
+        FROM {esquema}.cr_unidadconstruccion unidad
+        JOIN {esquema}.cr_caracteristicasunidadconstruccion caracteristica 
+            ON unidad.cr_caracteristicasunidadconstruccion = caracteristica.t_id
+        JOIN {esquema}.col_uebaunit ueba 
+            ON unidad.t_id = ueba.ue_cr_unidadconstruccion
+        JOIN {esquema}.lc_predio predio 
+            ON ueba.baunit = predio.t_id
+        WHERE caracteristica.acueducto = TRUE
+
+        UNION ALL
+
+        SELECT unidad.t_id as "Secuencia",
+        predio.n_ficha as "NroFicha", 
+        '004|TELEFONO' AS "Descripcion"
+        FROM {esquema}.cr_unidadconstruccion unidad
+        JOIN {esquema}.cr_caracteristicasunidadconstruccion caracteristica 
+            ON unidad.cr_caracteristicasunidadconstruccion = caracteristica.t_id
+        JOIN {esquema}.col_uebaunit ueba 
+            ON unidad.t_id = ueba.ue_cr_unidadconstruccion
+        JOIN {esquema}.lc_predio predio 
+            ON ueba.baunit = predio.t_id
+        WHERE caracteristica.telefono = TRUE
+
+        UNION ALL
+
+        SELECT unidad.t_id as "Secuencia", 
+        predio.n_ficha as "NroFicha", 
+        '003|ENERGIA' AS "Descripcion"
+        FROM {esquema}.cr_unidadconstruccion unidad
+        JOIN {esquema}.cr_caracteristicasunidadconstruccion caracteristica 
+            ON unidad.cr_caracteristicasunidadconstruccion = caracteristica.t_id
+        JOIN {esquema}.col_uebaunit ueba 
+            ON unidad.t_id = ueba.ue_cr_unidadconstruccion
+        JOIN {esquema}.lc_predio predio 
+            ON ueba.baunit = predio.t_id
+        WHERE caracteristica.energia = TRUE
+
+        UNION ALL
+
+        SELECT 
+        unidad.t_id as "Secuencia", 
+        predio.n_ficha as "NroFicha", 
+        '002|ALCANTARILLADO' AS "Descripcion"
+        FROM {esquema}.cr_unidadconstruccion unidad
+        JOIN {esquema}.cr_caracteristicasunidadconstruccion caracteristica 
+            ON unidad.cr_caracteristicasunidadconstruccion = caracteristica.t_id
+        JOIN {esquema}.col_uebaunit ueba 
+            ON unidad.t_id = ueba.ue_cr_unidadconstruccion
+        JOIN {esquema}.lc_predio predio 
+            ON ueba.baunit = predio.t_id
+        WHERE caracteristica.alcantarillado = TRUE
+
+        UNION ALL
+
+        SELECT 
+        unidad.t_id as "Secuencia", 
+        predio.n_ficha as "NroFicha", 
+        '005|GAS' AS "Descripcion"
+        FROM {esquema}.cr_unidadconstruccion unidad
+        JOIN {esquema}.cr_caracteristicasunidadconstruccion caracteristica 
+            ON unidad.cr_caracteristicasunidadconstruccion = caracteristica.t_id
+        JOIN {esquema}.col_uebaunit ueba 
+            ON unidad.t_id = ueba.ue_cr_unidadconstruccion
+        JOIN {esquema}.lc_predio predio 
+            ON ueba.baunit = predio.t_id
+        WHERE caracteristica.gas = TRUE;
+                """,
+        "Colindantes": f"""
+            select predio.n_ficha as "NroFicha", 
+            orientacion.ilicode "Orientacion",  
+            predio.numero_predial as Colindante,
+            null as "Radicado"
+            from {esquema}.lc_colindantes col
+            left join {esquema}.lc_orientaciontipo orientacion on col.orientacion =orientacion.t_id
+            left join {esquema}.lc_predio predio on col.lc_predio = predio.t_id
+                    """,
+                    "CartografiaInformacionGrafica":f"""
+                select 
+            predio.n_ficha::text  as "NroFicha",
+            cartografia.plancha as "IndicePlancha",
+            'NO DATA' as "Ventana",
+            escalatipo.dispname as "Escala",
+            cartografia.vigencia_plancha::TEXT as "Vigencia",
+            cartografia.foto as "Foto"
+
+            from {esquema}.lc_cartografia cartografia
+            left join {esquema}.lc_predio predio on predio.t_id=cartografia.lc_predio 
+            left join {esquema}.lc_escalatipo as escalatipo on cartografia.escala_plancha = escalatipo.t_id 
+            """,
+            
+        }

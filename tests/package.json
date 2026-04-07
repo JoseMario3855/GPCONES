@@ -1,0 +1,25 @@
+{
+  "name": "gpcones-tests",
+  "version": "1.0.0",
+  "description": "Scripts de prueba automatizados para GPCONES",
+  "main": "run-all-tests.js",
+  "scripts": {
+    "test": "node run-all-tests.js",
+    "test:auth": "node test-authentication.js",
+    "test:predios": "node test-predios.js",
+    "test:xtf": "node test-xtf.js"
+  },
+  "keywords": [
+    "testing",
+    "automated",
+    "gpcones",
+    "catastro"
+  ],
+  "author": "BY CONESTUDIOS",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "form-data": "^4.0.0"
+  }
+}
+
