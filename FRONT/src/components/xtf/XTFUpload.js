@@ -45,6 +45,7 @@ const XTFUpload = () => {
   const [uploadResult, setUploadResult] = useState(null);
   const [schemas, setSchemas] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedModelType, setSelectedModelType] = useState('antioquia');
 
   useEffect(() => {
     loadSchemas();
@@ -98,6 +99,8 @@ const XTFUpload = () => {
     try {
       setLoading(true);
       setCurrentStep(1);
+      
+      setSelectedModelType(values.model_type);
 
       const formData = new FormData();
       formData.append('xtf_file', selectedFile.originFileObj);
@@ -140,7 +143,7 @@ const XTFUpload = () => {
 
       const formData = new FormData();
       formData.append('xtf_file', selectedFile.originFileObj);
-      formData.append('model_type', values.model_type);
+      formData.append('model_type', selectedModelType);
       if (values.schema_name) {
         formData.append('schema_name', values.schema_name);
       }
@@ -402,6 +405,7 @@ const XTFUpload = () => {
                   <Option value="antioquia">LADM-COL Antioquia</Option>
                   <Option value="igac">LADM-COL IGAC</Option>
                   <Option value="ladm-col">LADM-COL Base</Option>
+                  <Option value="modelo-interno">Modelo Interno Levantamiento Catastral V 1.0.1</Option>
                 </Select>
               </Form.Item>
             </>

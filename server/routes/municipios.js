@@ -22,6 +22,9 @@ router.post('/',
   municipiosController.createMunicipio
 );
 
+// GET /api/municipios/:id/exportar-consolidado - Exportar consolidado de Excel del municipio
+router.get('/:id/exportar-consolidado', municipiosController.exportarConsolidado);
+
 // GET /api/municipios/:id - Obtener municipio por ID con sus schemas
 router.get('/:id', municipiosController.getMunicipioById);
 

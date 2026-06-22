@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Table, 
   Card, 
@@ -20,7 +20,8 @@ import {
   Descriptions,
   Divider,
   message,
-  Tabs
+  Tabs,
+  Spin
 } from 'antd';
 import { 
   HomeOutlined, 
@@ -38,13 +39,16 @@ import {
   ReloadOutlined,
   DownloadOutlined,
   EnvironmentOutlined,
-  DatabaseOutlined
+  DatabaseOutlined,
+  SaveOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import moment from 'moment';
 import PredioForm from './PredioForm';
+import PredioModal from './PredioModal';
+import { mapPredio, mapPropietario, mapConstruccion } from './predioMapper';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -53,12 +57,27 @@ const { RangePicker } = DatePicker;
 const Predios = () => {
   const { user, canManagePredios, canApprovePredios, municipioSeleccionado } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [predios, setPredios] = useState([]);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({});
-  const [selectedSchema, setSelectedSchema] = useState(null);
+  const [selectedSchema, setSelectedSchema] = useState(municipioSeleccionado?.schema_name || null);
+  const selectedSchemaRef = useRef(selectedSchema);
+
+  // Mantener la referencia actualizada con el schema seleccionado
+  useEffect(() => {
+    selectedSchemaRef.current = selectedSchema;
+  }, [selectedSchema]);
   const [schemas, setSchemas] = useState([]);
   const [loadingSchemas, setLoadingSchemas] = useState(false);
+  const [propietarios, setPropietarios] = useState([]);
+  const [loadingPropietarios, setLoadingPropietarios] = useState(false);
+  const [construcciones, setConstrucciones] = useState([]);
+  const [loadingConstrucciones, setLoadingConstrucciones] = useState(false);
+  const [calificaciones, setCalificaciones] = useState([]);
+  const [loadingCalificaciones, setLoadingCalificaciones] = useState(false);
+  const [typeOptions, setTypeOptions] = useState({ condiciones: [], destinaciones: [], tipos: [] });
+  const [loadingOptions, setLoadingOptions] = useState(false);
   const [availableColumns, setAvailableColumns] = useState([]); // Columnas disponibles del schema
   const [totalPredios, setTotalPredios] = useState(0); // Total de predios disponibles
   const [stats, setStats] = useState({
@@ -70,35 +89,49 @@ const Predios = () => {
   });
   const [selectedPredio, setSelectedPredio] = useState(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editingPredio, setEditingPredio] = useState(null);
   const [activeTab, setActiveTab] = useState('list');
   const [form] = Form.useForm();
+  const [editForm] = Form.useForm();
+  const [municipiosFilterList, setMunicipiosFilterList] = useState([]);
+  const [loadingMunicipios, setLoadingMunicipios] = useState(false);
 
   useEffect(() => {
     loadSchemas();
-    loadPrediosStats();
-    // Cargar predios después de un pequeño delay para asegurar que el municipio esté disponible
-    const timer = setTimeout(() => {
-      loadPredios();
-    }, 100);
-    return () => clearTimeout(timer);
+    loadMunicipiosFilter();
   }, []);
 
-  // Efecto para establecer el schema del municipio seleccionado automáticamente
+  // Efecto para establecer el schema desde el URL o desde el municipio seleccionado automáticamente
   useEffect(() => {
-    if (municipioSeleccionado && municipioSeleccionado.schema_name) {
+    const queryParams = new URLSearchParams(location.search);
+    const schemaParam = queryParams.get('schema');
+    
+    if (schemaParam) {
+      console.log('📡 Schema detectado desde URL:', schemaParam);
+      setSelectedSchema(schemaParam);
+    } else if (municipioSeleccionado && municipioSeleccionado.schema_name) {
       // Si hay municipio seleccionado, usar su schema automáticamente
       console.log('🏙️ Municipio seleccionado detectado:', municipioSeleccionado);
       setSelectedSchema(municipioSeleccionado.schema_name);
     } else {
-      // Si no hay municipio seleccionado, limpiar el schema seleccionado
+      // Si no hay municipio seleccionado ni URL param, limpiar el schema seleccionado
       setSelectedSchema(null);
     }
-  }, [municipioSeleccionado]);
+  }, [municipioSeleccionado, location.search]);
 
   useEffect(() => {
     // Cargar predios cuando cambia el schema (incluyendo cuando se limpia)
     console.log('📊 Schema cambió, cargando predios. Schema:', selectedSchema);
     loadPredios();
+    loadPrediosStats(selectedSchema);
+    // Cargar opciones de los menús desplegables cuando hay un schema seleccionado
+    if (selectedSchema) {
+      loadTypeOptions(selectedSchema);
+    } else {
+      setTypeOptions({ condiciones: [], destinaciones: [], tipos: [], documentoTypes: [], derechoTypes: [], fuenteTypes: [], disponibilidadTypes: [], ucTipos: [], ucUsos: [], ucPlantas: [], ucTradicionales: [] });
+    }
   }, [selectedSchema]);
 
   const loadSchemas = async () => {
@@ -115,7 +148,41 @@ const Predios = () => {
     }
   };
 
+  const loadMunicipiosFilter = async () => {
+    setLoadingMunicipios(true);
+    try {
+      const response = await axios.get('/api/municipios?activo=true');
+      if (response.data.success) {
+        const filtered = response.data.data.filter(m => parseInt(m.total_schemas, 10) > 0);
+        setMunicipiosFilterList(filtered);
+      }
+    } catch (error) {
+      console.error('Error cargando municipios para filtro:', error);
+    } finally {
+      setLoadingMunicipios(false);
+    }
+  };
+
+  // Carga todas las opciones para los menús desplegables (selects) de los formularios de edición
+  const loadTypeOptions = async (schema) => {
+    if (!schema) return;
+    setLoadingOptions(true);
+    try {
+      const response = await axios.get(`/api/predios/type-options?schema=${schema}`);
+      if (response.data.success) {
+        console.log('✅ Opciones de tipo cargadas desde la base de datos:', response.data.data);
+        setTypeOptions(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error cargando opciones de tipo:', error);
+      // No mostrar error al usuario, sólo advertencia en consola
+    } finally {
+      setLoadingOptions(false);
+    }
+  };
+
   const loadPredios = async (searchFilters = {}) => {
+    const currentRequestSchema = selectedSchema;
     try {
       setLoading(true);
       // Limpiar valores vacíos o undefined de los filtros
@@ -146,6 +213,12 @@ const Predios = () => {
       console.log('📡 Filtros limpios:', cleanFilters);
       
       const response = await axios.get('/api/predios', { params });
+
+      // Evitar condiciones de carrera: verificar que el schema de la petición sea el mismo que el activo actual
+      if (currentRequestSchema !== selectedSchemaRef.current) {
+        console.log(`🚫 Descartando respuesta de predios obsoleta para el schema "${currentRequestSchema}" (schema activo: "${selectedSchemaRef.current}")`);
+        return;
+      }
 
       if (response.data.success) {
         const prediosData = response.data.data.predios || [];
@@ -204,9 +277,13 @@ const Predios = () => {
     }
   };
 
-  const loadPrediosStats = async () => {
+  const loadPrediosStats = async (schema) => {
     try {
-      const response = await axios.get('/api/predios/stats');
+      const params = {};
+      if (schema) {
+        params.schema_name = schema;
+      }
+      const response = await axios.get('/api/predios/stats', { params });
       if (response.data.success) {
         const statsData = response.data.data;
         setStats({
@@ -228,29 +305,279 @@ const Predios = () => {
   };
 
   const handleFilter = (values) => {
-    console.log('🔍 Filtros aplicados:', values);
-    setFilters(values);
-    loadPredios(values);
+    console.log('🔍 Filtros de Formulario aplicados:', values);
+    
+    // Mapear los filtros de búsqueda unificados a los parámetros correspondientes
+    const { search_type, search_value, ...otherFilters } = values;
+    const mappedFilters = { ...otherFilters };
+    
+    if (search_value && search_value.trim() !== '') {
+      const val = search_value.trim();
+      if (search_type === 'npn') {
+        mappedFilters.npn = val;
+      } else if (search_type === 'ficha') {
+        mappedFilters.n_ficha = val;
+      } else if (search_type === 'matricula') {
+        mappedFilters.matricula_inmobiliaria = val;
+      } else if (search_type.startsWith('doc_')) {
+        mappedFilters.propietario_documento = val;
+        // Tipo de documento en mayúsculas (CC, NIT, CE, TI, RC, PASAPORTE)
+        mappedFilters.propietario_tipo_documento = search_type.substring(4).toUpperCase();
+      }
+    }
+    
+    setFilters(mappedFilters);
+    loadPredios(mappedFilters);
   };
 
-  const handleViewDetails = (predio) => {
-    setSelectedPredio(predio);
+  const reloadDetails = async (predioId, npn) => {
+    if (!selectedSchema) return;
+    
+    // 1. Cargar ficha detallada desde el API de consulta alfanumérica
+    try {
+      const response = await axios.get('/api/consulta-alfanumerico/fichas', {
+        params: { schema_name: selectedSchema, predio_id: predioId }
+      });
+      if (response.data.success && Array.isArray(response.data.data) && response.data.data.length > 0) {
+        const detailedMapped = mapPredio(response.data.data[0]);
+        setSelectedPredio(detailedMapped);
+      }
+    } catch (err) {
+      console.error('Error cargando ficha detallada:', err);
+    }
+
+    // 2. Cargar propietarios
+    setLoadingPropietarios(true);
+    try {
+      let ownersList = [];
+      try {
+        const response = await axios.get('/api/consulta-alfanumerico/propietarios', {
+          params: { schema_name: selectedSchema, predio_id: predioId, npn: npn }
+        });
+        if (response.data.success && Array.isArray(response.data.data)) {
+          ownersList = response.data.data;
+        }
+      } catch (err) {
+        console.error('Error cargando propietarios desde consulta-alfanumerico:', err);
+      }
+      
+      // Fallback a propietarios por predio_id si no se obtuvo nada
+      if (ownersList.length === 0 && predioId) {
+        try {
+          const response = await axios.get('/api/propietarios', {
+            params: { schema_name: selectedSchema, predio_id: predioId, limit: 100 }
+          });
+          if (response.data.success) {
+            ownersList = response.data.data.propietarios || [];
+          }
+        } catch (err) {
+          console.error('Error cargando propietarios fallback:', err);
+        }
+      }
+      
+      setPropietarios(ownersList.map(mapPropietario));
+    } catch (error) {
+      console.error('Error general cargando propietarios:', error);
+    } finally {
+      setLoadingPropietarios(false);
+    }
+
+    // 3. Cargar construcciones
+    setLoadingConstrucciones(true);
+    try {
+      const response = await axios.get('/api/consulta-alfanumerico/construcciones', {
+        params: { schema_name: selectedSchema, predio_id: predioId, npn: npn }
+      });
+      if (response.data.success && Array.isArray(response.data.data)) {
+        setConstrucciones(response.data.data.map((c, index) => mapConstruccion(c, index)));
+      }
+    } catch (error) {
+      console.error('Error cargando construcciones:', error);
+    } finally {
+      setLoadingConstrucciones(false);
+    }
+
+    // 4. Cargar calificaciones
+    setLoadingCalificaciones(true);
+    try {
+      const response = await axios.get('/api/consulta-alfanumerico/calificaciones-detalle', {
+        params: { schema_name: selectedSchema, predio_id: predioId, npn: npn }
+      });
+      if (response.data.success && Array.isArray(response.data.data)) {
+        setCalificaciones(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error cargando calificaciones:', error);
+    } finally {
+      setLoadingCalificaciones(false);
+    }
+  };
+
+  const handleViewDetails = async (predio) => {
+    const mappedPredio = mapPredio(predio);
+    setSelectedPredio(mappedPredio);
     setDetailModalVisible(true);
+    setPropietarios([]);
+    setConstrucciones([]);
+    setCalificaciones([]);
+    
+    const predioId = predio.t_id || predio.id;
+    const npn = mappedPredio.npn;
+    
+    if (selectedSchema) {
+      await reloadDetails(predioId, npn);
+    }
   };
 
   const handleEditPredio = (predio) => {
-    navigate(`/predios/${predio.id}/editar`);
+    // Si hay schema LADM activo, abrir modal inline; si no, navegar al formulario
+    if (selectedSchema) {
+      handleOpenEditModal(predio);
+    } else {
+      const predioId = predio.id || predio.t_id;
+      navigate(`/predios/${predioId}/editar`);
+    }
   };
 
-  const handleDeletePredio = async (predioId) => {
+  const handleOpenEditModal = async (predio) => {
+    setEditingPredio(predio);
+    setEditModalVisible(true);
+    
+    // Set initial values
+    editForm.setFieldsValue({
+      numero_predial_nacional: predio.Npn || predio.npn || predio.numero_predial_nacional || '',
+      matricula_inmobiliaria:  predio.matricula_inmobiliaria || '',
+      espacio_de_nombres:      predio.NumeroFicha || predio.espacio_de_nombres || '',
+      departamento:            predio.departamento || '',
+      municipio:               predio.municipio || '',
+      codigo_orip:             predio.codigo_orip || '',
+      nombre:                  predio.nombre || '',
+      condicion_predio:        predio.condicion_predio || undefined,
+      tipo_predio:             predio.tipo || undefined,
+      uso_predio:              predio.destinacion_economica || undefined
+    });
+
+    if (selectedSchema) {
+      setLoadingOptions(true);
+      try {
+        const response = await axios.get('/api/predios/type-options', {
+          params: { schema: selectedSchema }
+        });
+        if (response.data.success) {
+          setTypeOptions(response.data.data);
+        }
+      } catch (err) {
+        console.error('Error cargando opciones de tipo:', err);
+        message.error('No se pudieron cargar las opciones para Condición, Tipo y Destino');
+      } finally {
+        setLoadingOptions(false);
+      }
+    }
+  };
+
+  const handleSaveEdit = async (values) => {
+    if (!editingPredio || !selectedSchema) return;
+    const predioId = editingPredio.t_id || editingPredio.id;
+    if (!predioId || predioId === 'undefined') {
+      message.error("ID del predio no válido o no definido");
+      return;
+    }
     try {
-      // TODO: Implementar endpoint real de eliminación
-      message.success('Predio eliminado exitosamente');
-      loadPredios();
-      loadPrediosStats();
+      setEditLoading(true);
+      const payload = {
+        numero_predial_nacional: values.numero_predial_nacional,
+        matricula_inmobiliaria:  values.matricula_inmobiliaria === '' ? null : values.matricula_inmobiliaria,
+        espacio_de_nombres:      values.espacio_de_nombres,
+        departamento:            values.departamento,
+        municipio:               values.municipio,
+        codigo_orip:             values.codigo_orip,
+        nombre:                  values.nombre,
+        condicion_predio:        values.condicion_predio,
+        tipo_predio:             values.tipo_predio,
+        uso_predio:              values.uso_predio
+      };
+      const response = await axios.put(
+        `/api/predios/${predioId}?schema=${selectedSchema}`,
+        payload
+      );
+      if (response.data.success !== false) {
+        message.success('Predio actualizado exitosamente');
+        setEditModalVisible(false);
+        setEditingPredio(null);
+        loadPredios(filters);
+      }
     } catch (error) {
-      console.error('Error eliminando predio:', error);
-      message.error('Error eliminando el predio');
+      console.error('Error actualizando predio:', error);
+      message.error(error.response?.data?.message || 'Error al actualizar el predio');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleDeletePredio = async (predioId, predio = null) => {
+    if (!predioId || predioId === 'undefined') {
+      message.error("ID del predio no válido o no definido");
+      return;
+    }
+    const npn = predio?.Npn || predio?.npn || predioId;
+    try {
+      Modal.confirm({
+        title: '¿Eliminar este predio?',
+        content: (
+          <div>
+            <p>
+              Se eliminará el predio{' '}
+              <strong style={{ fontFamily: 'monospace' }}>{npn}</strong>{' '}
+              y <strong>todos sus registros asociados</strong>:
+            </p>
+            <ul style={{ paddingLeft: 20, color: '#ff4d4f', marginBottom: 0 }}>
+              <li>Derechos catastrales</li>
+              <li>Propietarios / Interesados</li>
+              <li>Fuentes administrativas</li>
+              <li>Direcciones</li>
+            </ul>
+            <p style={{ marginTop: 8, color: '#ff4d4f', fontWeight: 'bold' }}>
+              ⚠️ Esta acción es irreversible.
+            </p>
+          </div>
+        ),
+        okText: 'Sí, eliminar todo',
+        okType: 'danger',
+        cancelText: 'Cancelar',
+        width: 420,
+        onOk: async () => {
+          try {
+            setLoading(true);
+            const schemaParam = selectedSchema ? `?schema=${selectedSchema}` : '';
+            const response = await axios.delete(`/api/predios/${predioId}${schemaParam}`);
+            const { deleted } = response.data;
+            if (deleted) {
+              message.success(
+                `Predio eliminado. Cascada: ${deleted.derechos || 0} derecho(s), ` +
+                `${deleted.interesados || 0} interesado(s), ` +
+                `${deleted.fuentes || 0} fuente(s), ` +
+                `${deleted.direcciones || 0} dirección(es), ` +
+                `${deleted.uebaunit || 0} unidad(es) espacial(es)`,
+                5
+              );
+            } else {
+              message.success('Predio eliminado exitosamente');
+            }
+            // Cerrar modal de detalles si estaba abierto
+            setDetailModalVisible(false);
+            setSelectedPredio(null);
+            loadPredios(filters);
+            loadPrediosStats();
+          } catch (error) {
+            console.error('Error eliminando predio:', error);
+            message.error(error.response?.data?.message || error.response?.data?.error || 'Error al eliminar el predio');
+          } finally {
+            setLoading(false);
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error in handleDeletePredio:', error);
     }
   };
 
@@ -311,21 +638,42 @@ const Predios = () => {
     const columnTemplates = {
       't_id': {
         title: 't_id',
-        width: 100,
+        width: 80,
         render: (val) => <Text code>{val || '-'}</Text>
       },
-      't_ili_tid': {
-        title: 't_ili_tid',
-        width: 200,
-        render: (val) => <Text code style={{ fontSize: '11px' }}>{val ? val.substring(0, 20) + '...' : '-'}</Text>
+      // ── Columnas nuevas de la query actualizada ──────────────────────
+      'NumeroFicha': {
+        title: 'Número Ficha',
+        render: (val) => <Text>{val || '-'}</Text>
       },
-      'numero_predial': {
-        title: 'Número Predial',
+      'Npn': {
+        title: 'NPN',
         render: (val) => <Text strong style={{ fontFamily: 'monospace' }}>{val || '-'}</Text>
       },
       'matricula_inmobiliaria': {
         title: 'Matrícula Inmobiliaria',
         render: (val) => <Text>{val || '-'}</Text>
+      },
+      'Condicion': {
+        title: 'Condición',
+        render: (val) => <Tag color="orange">{val || '-'}</Tag>
+      },
+      'Tipo': {
+        title: 'Tipo',
+        render: (val) => <Tag color="blue">{val || '-'}</Tag>
+      },
+      'DestinoEconomico': {
+        title: 'Destino Económico',
+        render: (val) => <Tag color="green">{val || '-'}</Tag>
+      },
+      'Direccion': {
+        title: 'Dirección',
+        render: (val) => <Text>{val || '-'}</Text>
+      },
+      // ── Columnas legacy (predios del sistema / otros schemas) ────────
+      'numero_predial': {
+        title: 'Número Predial',
+        render: (val) => <Text strong style={{ fontFamily: 'monospace' }}>{val || '-'}</Text>
       },
       'codigo_orip': {
         title: 'Código ORIP',
@@ -343,22 +691,14 @@ const Predios = () => {
         title: 'Municipio',
         render: (val) => <Text strong>{val || '-'}</Text>
       },
-      'id_operacion': {
-        title: 'ID Operación',
-        render: (val) => <Text code>{val || '-'}</Text>
-      },
       'avaluo_catastral': {
-        title: 'Avaluo Catastral',
+        title: 'Avalúo Catastral',
         render: (val) => {
           if (!val) return <Text>-</Text>;
           const numVal = typeof val === 'number' ? val : parseFloat(val);
           if (isNaN(numVal)) return <Text>-</Text>;
           return <Text strong>${numVal.toLocaleString('es-CO')}</Text>;
         }
-      },
-      'tipo': {
-        title: 'Tipo',
-        render: (val) => <Tag color="blue">{val || '-'}</Tag>
       },
       'condicion_predio': {
         title: 'Condición Predio',
@@ -372,25 +712,9 @@ const Predios = () => {
         title: 'Número Ficha',
         render: (val) => <Text>{val || '-'}</Text>
       },
-      'nombre': {
-        title: 'Nombre',
-        render: (val) => <Text>{val || '-'}</Text>
-      },
-      'local_id': {
-        title: 'Local ID',
-        render: (val) => <Text code>{val || '-'}</Text>
-      },
       'espacio_de_nombres': {
         title: 'Espacio de Nombres',
         render: (val) => <Text type="secondary" style={{ fontSize: '11px' }}>{val || '-'}</Text>
-      },
-      'comienzo_vida_util_version': {
-        title: 'Inicio Vida Útil',
-        render: (val) => <Text type="secondary">{val || '-'}</Text>
-      },
-      'fin_vida_util_version': {
-        title: 'Fin Vida Útil',
-        render: (val) => <Text type="secondary">{val || '-'}</Text>
       }
     };
 
@@ -399,9 +723,26 @@ const Predios = () => {
       ? availableColumns 
       : (predios.length > 0 ? Object.keys(predios[0]) : []);
 
-    // Generar columnas dinámicamente para TODAS las columnas disponibles
-    const dynamicColumns = allColumns.map(columnName => {
-      const template = columnTemplates[columnName];
+    // Orden de columnas alineado con la query actualizada
+    const requestedOrder = [
+      'NumeroFicha',
+      'Npn',
+      'matricula_inmobiliaria',
+      'Condicion',
+      'Tipo',
+      'DestinoEconomico',
+      'Direccion'
+    ];
+
+    // Filtrar las columnas que existen en los datos y respetar el orden solicitado
+    const orderedColumns = requestedOrder.filter(col => allColumns.includes(col));
+    
+    // Solo mostrar las columnas solicitadas
+    const finalColumnOrder = [...orderedColumns];
+
+    // Generar columnas dinámicamente
+    const dynamicColumns = finalColumnOrder.map(columnName => {
+      const template = columnTemplates[columnName] || columnTemplates[columnName.toLowerCase()];
       
       if (template) {
         // Usar plantilla personalizada si existe
@@ -419,7 +760,7 @@ const Predios = () => {
           dataIndex: columnName,
           key: columnName,
           render: (val) => {
-            if (val === null || val === undefined) return <Text type="secondary">-</Text>;
+            if (val === null || val === undefined || val === '') return <Text type="secondary">-</Text>;
             if (typeof val === 'boolean') return <Tag color={val ? 'green' : 'red'}>{val ? 'Sí' : 'No'}</Tag>;
             if (typeof val === 'number') return <Text>{val.toLocaleString('es-CO')}</Text>;
             if (typeof val === 'object') return <Text code style={{ fontSize: '11px' }}>{JSON.stringify(val).substring(0, 50)}...</Text>;
@@ -427,6 +768,37 @@ const Predios = () => {
           }
         };
       }
+    });
+
+    // Agregar columna de acciones al final
+    dynamicColumns.push({
+      title: 'Acciones',
+      key: 'actions',
+      fixed: 'right',
+      width: 120,
+      render: (_, record) => (
+        <Space>
+          <Tooltip title="Ver detalles">
+            <Button 
+              type="text" 
+              icon={<EyeOutlined />} 
+              size="small"
+              onClick={() => handleViewDetails(record)}
+            />
+          </Tooltip>
+          {canManagePredios && (
+            <Tooltip title="Eliminar predio">
+              <Button 
+                type="text" 
+                icon={<DeleteOutlined />} 
+                size="small"
+                danger
+                onClick={() => handleDeletePredio(record.t_id || record.id, record)}
+              />
+            </Tooltip>
+          )}
+        </Space>
+      )
     });
 
     return dynamicColumns;
@@ -561,25 +933,14 @@ const Predios = () => {
             />
           </Tooltip>
           
-          {canManagePredios && (
-            <Tooltip title="Editar predio">
-              <Button 
-                type="text" 
-                icon={<EditOutlined />} 
-                size="small"
-                onClick={() => handleEditPredio(record)}
-              />
-            </Tooltip>
-          )}
-          
-          {canManagePredios && record.estado === 'Borrador' && (
+          {canManagePredios && (record.estado === 'Borrador' || selectedSchema) && (
             <Tooltip title="Eliminar predio">
               <Button 
                 type="text" 
                 icon={<DeleteOutlined />} 
                 size="small"
                 danger
-                onClick={() => handleDeletePredio(record.id)}
+                onClick={() => handleDeletePredio(record.id || record.t_id, record)}
               />
             </Tooltip>
           )}
@@ -616,7 +977,7 @@ const Predios = () => {
             key: 'create',
             label: 'Registrar Predio',
             icon: <PlusOutlined />,
-            children: <PredioForm onSuccess={() => {
+            children: <PredioForm schema={selectedSchema} onSuccess={() => {
               setActiveTab('list');
               loadPredios();
               loadPrediosStats();
@@ -743,7 +1104,6 @@ const Predios = () => {
               value={selectedSchema}
               onChange={(value) => {
                 setSelectedSchema(value || null);
-                loadPredios();
               }}
               allowClear
               loading={loadingSchemas}
@@ -791,37 +1151,28 @@ const Predios = () => {
           onFinish={handleFilter}
           style={{ marginBottom: '16px' }}
         >
-          <Form.Item name="search" label="Buscar">
-            <Input 
-              placeholder={selectedSchema 
-                ? "Número predial, número de ficha, matrícula inmobiliaria..." 
-                : "NPN, propietario, municipio..."} 
-              prefix={<SearchOutlined />}
-              style={{ width: selectedSchema ? 300 : 250 }}
-              allowClear
-            />
+          <Form.Item name="search_type" label="Buscar por" initialValue="npn">
+            <Select style={{ width: 230 }}>
+              <Option value="npn">NPN</Option>
+              <Option value="ficha">Número de Ficha</Option>
+              <Option value="matricula">Matrícula Inmobiliaria</Option>
+              <Option value="doc_cc">Propietario: Cédula (CC)</Option>
+              <Option value="doc_nit">Propietario: NIT</Option>
+              <Option value="doc_ce">Propietario: Céd. Extranjería (CE)</Option>
+              <Option value="doc_ti">Propietario: Tarjeta Identidad (TI)</Option>
+              <Option value="doc_rc">Propietario: Registro Civil (RC)</Option>
+              <Option value="doc_pasaporte">Propietario: Pasaporte</Option>
+            </Select>
           </Form.Item>
           
-          {/* Campos específicos para schemas XTF/ILI */}
-          {selectedSchema && (
-            <>
-              <Form.Item name="numero_predial" label="Número Predial">
-                <Input 
-                  placeholder="Ej: 123456789" 
-                  style={{ width: 180 }}
-                  allowClear
-                />
-              </Form.Item>
-              
-              <Form.Item name="n_ficha" label="Número de Ficha">
-                <Input 
-                  placeholder="Ej: 001234" 
-                  style={{ width: 180 }}
-                  allowClear
-                />
-              </Form.Item>
-            </>
-          )}
+          <Form.Item name="search_value" label="Valor">
+            <Input 
+              placeholder="Ej: Ingrese valor..." 
+              style={{ width: 220 }}
+              allowClear
+              prefix={<SearchOutlined />}
+            />
+          </Form.Item>
           
           <Form.Item name="estado" label="Estado">
             <Select 
@@ -839,19 +1190,17 @@ const Predios = () => {
           <Form.Item name="municipio" label="Municipio">
             <Select 
               placeholder="Todos los municipios" 
-              style={{ width: 150 }}
+              style={{ width: 180 }}
               allowClear
+              showSearch
+              filterOption={(input, option) =>
+                option?.children?.toLowerCase()?.indexOf(input.toLowerCase()) >= 0
+              }
+              loading={loadingMunicipios}
             >
-              <Option value="Medellín">Medellín</Option>
-              <Option value="Bello">Bello</Option>
-              <Option value="Envigado">Envigado</Option>
-              <Option value="Itagüí">Itagüí</Option>
-              <Option value="Sabaneta">Sabaneta</Option>
-              <Option value="La Estrella">La Estrella</Option>
-              <Option value="Caldas">Caldas</Option>
-              <Option value="Copacabana">Copacabana</Option>
-              <Option value="Girardota">Girardota</Option>
-              <Option value="Barbosa">Barbosa</Option>
+              {municipiosFilterList.map(m => (
+                <Option key={m.id} value={m.nombre}>{m.nombre}</Option>
+              ))}
             </Select>
           </Form.Item>
           
@@ -919,7 +1268,7 @@ const Predios = () => {
               <Button 
                 type="primary" 
                 icon={<PlusOutlined />}
-                onClick={() => navigate('/predios/nuevo')}
+                onClick={() => navigate(selectedSchema ? `/predios/nuevo?schema=${selectedSchema}` : '/predios/nuevo')}
               >
                 Nuevo Predio
               </Button>
@@ -968,74 +1317,227 @@ const Predios = () => {
       </Card>
 
       {/* Modal de Detalles */}
+      {detailModalVisible && selectedPredio && (
+        <PredioModal
+          predio={selectedPredio}
+          propietarios={propietarios}
+          construcciones={construcciones}
+          calificaciones={calificaciones}
+          onClose={() => {
+            setDetailModalVisible(false);
+            setSelectedPredio(null);
+          }}
+          canManagePredios={canManagePredios}
+          handleEditPredio={handleEditPredio}
+          handleDeletePredio={handleDeletePredio}
+          loadingPropietarios={loadingPropietarios}
+          loadingConstrucciones={loadingConstrucciones}
+          loadingCalificaciones={loadingCalificaciones}
+          typeOptions={typeOptions}
+          selectedSchema={selectedSchema}
+          onRefresh={() => reloadDetails(selectedPredio.t_id || selectedPredio.id, selectedPredio.npn)}
+        />
+      )}
+
+      {/* ── Modal de Edición Inline (predios LADM-COL) ── */}
       <Modal
-        title="Detalles del Predio"
-        open={detailModalVisible}
-        onCancel={() => setDetailModalVisible(false)}
+        title={
+          <Space>
+            <EditOutlined style={{ color: '#2E8B57' }} />
+            <span>
+              Editar Predio —{' '}
+              <Text code style={{ fontSize: 13 }}>
+                {editingPredio?.Npn || editingPredio?.t_id}
+              </Text>
+            </span>
+          </Space>
+        }
+        open={editModalVisible}
+        onCancel={() => { setEditModalVisible(false); setEditingPredio(null); }}
         footer={null}
-        width={700}
+        width={600}
+        destroyOnClose
       >
-        {selectedPredio && (
-          <div>
-            <Descriptions title="Información General" bordered column={2}>
-              <Descriptions.Item label="NPN" span={1}>
-                <Text strong style={{ fontFamily: 'monospace' }}>
-                  {selectedPredio.npn}
-                </Text>
+        {editingPredio && (
+          <Spin spinning={editLoading}>
+            {/* Info de solo lectura */}
+            <Descriptions size="small" bordered column={2} style={{ marginBottom: 20 }}>
+              <Descriptions.Item label="t_id" span={1}>
+                <Text code>{editingPredio.t_id}</Text>
               </Descriptions.Item>
-              <Descriptions.Item label="Estado" span={1}>
-                <Tag 
-                  color={getStatusColor(selectedPredio.estado)} 
-                  icon={getStatusIcon(selectedPredio.estado)}
-                >
-                  {selectedPredio.estado}
-                </Tag>
+              <Descriptions.Item label="Condición" span={1}>
+                <Tag color="orange">{editingPredio.Condicion || '-'}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="Municipio" span={1}>
-                {selectedPredio.municipio}
+              <Descriptions.Item label="Tipo" span={1}>
+                <Tag color="blue">{editingPredio.Tipo || '-'}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="Vereda" span={1}>
-                {selectedPredio.vereda}
+              <Descriptions.Item label="Destino Económico" span={1}>
+                <Tag color="green">{editingPredio.DestinoEconomico || '-'}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="Área (ha)" span={1}>
-                <Text strong>{selectedPredio.area_ha.toFixed(2)}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="Propietario" span={1}>
-                {selectedPredio.propietario}
-              </Descriptions.Item>
-              <Descriptions.Item label="Creado Por" span={1}>
-                <Tag color="blue">@{selectedPredio.created_by}</Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="Fecha Creación" span={1}>
-                {moment(selectedPredio.created_at).format('DD/MM/YYYY HH:mm')}
+              <Descriptions.Item label="Dirección" span={2}>
+                <Text type="secondary">{editingPredio.Direccion || '-'}</Text>
               </Descriptions.Item>
             </Descriptions>
 
-            <Divider />
+            <Divider style={{ margin: '12px 0' }}>Campos editables</Divider>
 
-            <div style={{ textAlign: 'center' }}>
-              <Space>
-                {canManagePredios && (
-                  <Button 
-                    type="primary" 
-                    icon={<EditOutlined />}
-                    onClick={() => {
-                      setDetailModalVisible(false);
-                      handleEditPredio(selectedPredio);
-                    }}
+            <Form
+              form={editForm}
+              layout="vertical"
+              onFinish={handleSaveEdit}
+            >
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="numero_predial_nacional"
+                    label="NPN (Número Predial Nacional)"
+                    rules={[
+                      { required: true, message: 'El NPN es obligatorio' },
+                      { pattern: /^[0-9]{30}$/, message: 'El NPN debe ser de exactamente 30 dígitos numéricos' }
+                    ]}
                   >
-                    Editar Predio
+                    <Input placeholder="Ej: 250010100000000170999000000000" maxLength={30} showCount />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="matricula_inmobiliaria"
+                    label="Matrícula Inmobiliaria"
+                    rules={[
+                      {
+                        validator: (_, value) => {
+                          if (!value && value !== 0) return Promise.resolve();
+                          const num = parseInt(value, 10);
+                          if (isNaN(num)) return Promise.reject('Debe ser un número entero');
+                          if (num > 2147483647) return Promise.reject('Valor muy grande (máx 2,147,483,647)');
+                          if (num < 0) return Promise.reject('Debe ser un número positivo');
+                          return Promise.resolve();
+                        }
+                      }
+                    ]}
+                  >
+                    <Input
+                      type="number"
+                      placeholder="Ej: 12345"
+                      style={{ width: '100%' }}
+                      min={0}
+                      max={2147483647}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="espacio_de_nombres"
+                    label="Número de Ficha"
+                  >
+                    <Input placeholder="Ej: CO.ANT...." />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="nombre"
+                    label="Nombre / Descripción"
+                  >
+                    <Input placeholder="Ej: LOTE LA ESMERALDA" />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item
+                    name="departamento"
+                    label="Departamento"
+                  >
+                    <Input placeholder="Ej: ANTIOQUIA" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="municipio"
+                    label="Municipio"
+                  >
+                    <Input placeholder="Ej: SOPETRAN" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="codigo_orip"
+                    label="Círculo ORIP"
+                  >
+                    <Input placeholder="Ej: 001" />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item
+                    name="condicion_predio"
+                    label="Condición Predio"
+                  >
+                    <Select placeholder="Seleccionar" loading={loadingOptions} allowClear>
+                      {typeOptions.condiciones.map(opt => (
+                        <Option key={opt.t_id} value={opt.t_id}>
+                          {opt.dispname || opt.ilicode}
+                        </Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="tipo_predio"
+                    label="Tipo Predio"
+                  >
+                    <Select placeholder="Seleccionar" loading={loadingOptions} allowClear>
+                      {typeOptions.tipos.map(opt => (
+                        <Option key={opt.t_id} value={opt.t_id}>
+                          {opt.dispname || opt.ilicode}
+                        </Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name="uso_predio"
+                    label="Destino Económico"
+                  >
+                    <Select placeholder="Seleccionar" loading={loadingOptions} allowClear>
+                      {typeOptions.destinaciones.map(opt => (
+                        <Option key={opt.t_id} value={opt.t_id}>
+                          {opt.dispname || opt.ilicode}
+                        </Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <div style={{ textAlign: 'right', marginTop: 8 }}>
+                <Space>
+                  <Button onClick={() => { setEditModalVisible(false); setEditingPredio(null); }}>
+                    Cancelar
                   </Button>
-                )}
-                <Button onClick={() => setDetailModalVisible(false)}>
-                  Cerrar
-                </Button>
-              </Space>
-            </div>
-                     </div>
-         )}
-       </Modal>
-       
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    icon={<SaveOutlined />}
+                    loading={editLoading}
+                  >
+                    Guardar Cambios
+                  </Button>
+                </Space>
+              </div>
+            </Form>
+          </Spin>
+        )}
+      </Modal>
+
        {/* Footer con BY CONESTUDIOS */}
        <div style={{ 
          textAlign: 'center', 

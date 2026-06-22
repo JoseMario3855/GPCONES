@@ -18,6 +18,149 @@ class ILIService {
     this.ensureDirectories();
   }
 
+  isCommandNotFoundError(error) {
+    if (!error) return false;
+    if (error.code === 'ENOENT') return true;
+    const msg = error.message ? error.message.toLowerCase() : '';
+    return msg.includes('not recognized') || 
+           msg.includes('no se reconoce') || 
+           msg.includes('not found') || 
+           msg.includes('no encontrado');
+  }
+
+  async preprocessXTFFile(xtfFilePath) {
+    try {
+      let content = await fs.readFile(xtfFilePath, 'utf8');
+      let modified = false;
+      
+      // 1. Corregir casing del submodelo
+      if (content.includes('Submodelo_Valoracion_Masiva_V_1_0')) {
+        content = content.replace(/Submodelo_Valoracion_Masiva_V_1_0/g, 'Submodelo_Valoracion_Masiva_v_1_0');
+        modified = true;
+      }
+
+      // 2. Resolver TIDs duplicados de CR_UnidadConstruccion y actualizar col_ueBaunit
+      try {
+        const parser = new xml2js.Parser({ explicitArray: true });
+        const result = await parser.parseStringPromise(content);
+        
+        const transferKey = Object.keys(result || {}).find(k => k.endsWith('TRANSFER'));
+        if (transferKey) {
+          const transfer = result[transferKey];
+          const dsKey = Object.keys(transfer || {}).find(k => k.endsWith('DATASECTION'));
+          
+          if (dsKey && transfer[dsKey] && transfer[dsKey][0]) {
+            const datasection = transfer[dsKey][0];
+            
+            // Encontrar todos los ILC_Predio para mapear su TID a su Local_Id
+            const predioMap = new Map(); // TID -> Local_Id
+            
+            for (const [key, val] of Object.entries(datasection)) {
+              if (key === '$' || key === 'BID') continue;
+              const dataset = val[0];
+              if (typeof dataset === 'object' && dataset !== null) {
+                const predioKey = Object.keys(dataset).find(k => k.endsWith('.ILC_Predio'));
+                if (predioKey) {
+                  const predios = dataset[predioKey];
+                  if (Array.isArray(predios)) {
+                    predios.forEach(p => {
+                      const tid = p.$?.TID;
+                      const localId = p.Local_Id?.[0];
+                      if (tid && localId) {
+                        predioMap.set(tid, localId);
+                      }
+                    });
+                  }
+                }
+              }
+            }
+            
+            // Modificar TIDs duplicados de CR_UnidadConstruccion usando UUIDs válidos
+            const unitMap = new Map(); // "TID_LocalId" -> nuevoTID
+            const seenTids = new Set();
+            let duplicatedUnits = 0;
+            const crypto = require('crypto');
+            
+            for (const [key, val] of Object.entries(datasection)) {
+              if (key === '$' || key === 'BID') continue;
+              const dataset = val[0];
+              if (typeof dataset === 'object' && dataset !== null) {
+                const unitKey = Object.keys(dataset).find(k => k.endsWith('.CR_UnidadConstruccion'));
+                if (unitKey) {
+                  const units = dataset[unitKey];
+                  if (Array.isArray(units)) {
+                    units.forEach(u => {
+                      const tid = u.$?.TID;
+                      const localId = u.Local_Id?.[0];
+                      if (tid && localId) {
+                        let targetTid = tid;
+                        if (seenTids.has(tid)) {
+                          targetTid = crypto.randomUUID();
+                          u.$.TID = targetTid;
+                          duplicatedUnits++;
+                          console.log(`[DEDUP] Duplicado en CR_UnidadConstruccion. Reemplazando TID ${tid} por nuevo UUID ${targetTid} para Local_Id ${localId}`);
+                        } else {
+                          seenTids.add(tid);
+                        }
+                        unitMap.set(`${tid}_${localId}`, targetTid);
+                      }
+                    });
+                  }
+                }
+              }
+            }
+            
+            if (duplicatedUnits > 0) {
+              // Actualizar referencias en col_ueBaunit
+              let updatedRefs = 0;
+              for (const [key, val] of Object.entries(datasection)) {
+                if (key === '$' || key === 'BID') continue;
+                const dataset = val[0];
+                if (typeof dataset === 'object' && dataset !== null) {
+                  const ueBaunitKey = Object.keys(dataset).find(k => k.endsWith('.col_ueBaunit'));
+                  if (ueBaunitKey) {
+                    const ueBaunits = dataset[ueBaunitKey];
+                    if (Array.isArray(ueBaunits)) {
+                      ueBaunits.forEach(rel => {
+                        const ueRef = rel.ue?.[0]?.$?.REF;
+                        const baunitRef = rel.baunit?.[0]?.$?.REF;
+                        if (ueRef && baunitRef) {
+                          const localId = predioMap.get(baunitRef);
+                          if (localId) {
+                            const lookupKey = `${ueRef}_${localId}`;
+                            const newUeTid = unitMap.get(lookupKey);
+                            if (newUeTid) {
+                              rel.ue[0].$.REF = newUeTid;
+                              updatedRefs++;
+                            }
+                          }
+                        }
+                      });
+                    }
+                  }
+                }
+              }
+              
+              console.log(`[PREPROCESS] Resolviendo ${duplicatedUnits} duplicados en CR_UnidadConstruccion y actualizando ${updatedRefs} referencias.`);
+              const builder = new xml2js.Builder();
+              content = builder.buildObject(result);
+              modified = true;
+            }
+          }
+        }
+      } catch (parseError) {
+        console.warn(`[PREPROCESS] Advertencia al analizar XTF para deduplicación: ${parseError.message}`);
+      }
+
+      if (modified) {
+        console.log(`[PREPROCESS] Escribiendo cambios en archivo XTF: ${xtfFilePath}`);
+        await fs.writeFile(xtfFilePath, content, 'utf8');
+      }
+    } catch (error) {
+      console.error('Error preprocesando archivo XTF:', error);
+    }
+  }
+
   async ensureDirectories() {
     try {
       await fs.mkdir(this.uploadDir, { recursive: true });
@@ -28,10 +171,48 @@ class ILIService {
     }
   }
 
+  getModelName(modelType) {
+    if (modelType === 'modelo-interno') {
+      return 'Modelo_Aplicacion_Interno_Levantamiento_Catastral_LADMCOL_V1_0;LADM_COL_V3_1;Submodelo_Valoracion_Masiva_v_1_0;Submodelo_Cartografia_Catastral_V1_0;Submodelo_Calificacion_Unidad_Construccion_V1_0';
+    }
+    return 'LADM_COL_V3_1';
+  }
+
+  getDBParams() {
+    const host = process.env.DB_HOST || 'localhost';
+    const port = process.env.DB_PORT || 5432;
+    const dbname = process.env.DB_NAME || 'GP_CONES';
+    const user = process.env.DB_USER || 'postgres';
+    const password = process.env.DB_PASSWORD || 'admin1';
+    return `--dbhost ${host} --dbport ${port} --dbdatabase ${dbname} --dbusr ${user} --dbpwd ${password}`;
+  }
+
+  async getILI2PGCommand() {
+    const toolsDir = path.join(__dirname, '../tools');
+    const jarPath = path.join(toolsDir, 'ili2pg.jar');
+    const libDir = path.join(toolsDir, 'ili2pg-folder/libs');
+    
+    try {
+      await fs.access(jarPath);
+      const libsFiles = await fs.readdir(libDir);
+      const libsList = libsFiles
+        .filter(f => f.endsWith('.jar'))
+        .map(f => path.join(libDir, f).replace(/\\/g, '/'));
+      
+      const jarPathEscaped = jarPath.replace(/\\/g, '/');
+      const classpath = [jarPathEscaped, ...libsList].join(';');
+      return `java -cp "${classpath}" ch.ehi.ili2pg.PgMain`;
+    } catch (error) {
+      console.warn('ili2pg.jar o carpeta libs no encontrados, usando "ili2pg" por defecto');
+      return 'ili2pg';
+    }
+  }
+
   // Validar archivo XTF contra modelo ILI usando ilivalidator
   async validateXTFAgainstModel(xtfFilePath, modelType = 'antioquia') {
     try {
       console.log(`Validando XTF contra modelo ${modelType}: ${xtfFilePath}`);
+      await this.preprocessXTFFile(xtfFilePath);
       
       // Intentar obtener el modelo ILI
       let modelPath;
@@ -88,7 +269,10 @@ class ILIService {
   async basicXTFValidation(xtfFilePath) {
     try {
       const xmlContent = await fs.readFile(xtfFilePath, 'utf8');
-      const parser = new xml2js.Parser();
+      const parser = new xml2js.Parser({ 
+        explicitRoot: false,
+        tagNameProcessors: [xml2js.processors.stripPrefix]
+      });
       const result = await parser.parseStringPromise(xmlContent);
       
       // Validar estructura básica XTF
@@ -101,20 +285,42 @@ class ILIService {
         details: []
       };
 
+      // Find DATASECTION key in a case-insensitive manner
+      const keys = Object.keys(result || {});
+      const dataSectionKey = keys.find(k => k.toUpperCase() === 'DATASECTION');
+      const datasection = dataSectionKey ? result[dataSectionKey] : null;
+
       // Verificar estructura XTF
-      if (!result.DATASECTION) {
+      if (!datasection) {
         validation.errors.push('Archivo XTF no contiene sección DATASECTION');
         validation.isValid = false;
         return validation;
       }
 
-      // Contar entidades
-      const datasets = result.DATASECTION.DATASET || [];
-      datasets.forEach(dataset => {
-        const objects = dataset.OBJECT || [];
-        validation.totalEntities += objects.length;
-        validation.validEntities += objects.length;
+      // Contar entidades de forma dinámica
+      let totalObjects = 0;
+      const datasections = Array.isArray(datasection) ? datasection : [datasection];
+      
+      datasections.forEach(dsSection => {
+        if (typeof dsSection === 'object' && dsSection !== null) {
+          for (const [key, value] of Object.entries(dsSection)) {
+            if (key === '$') continue;
+            const datasets = Array.isArray(value) ? value : [value];
+            datasets.forEach(dataset => {
+              if (typeof dataset === 'object' && dataset !== null) {
+                for (const [classKey, classVal] of Object.entries(dataset)) {
+                  if (classKey === '$' || classKey === 'BID') continue;
+                  const objects = Array.isArray(classVal) ? classVal : [classVal];
+                  totalObjects += objects.length;
+                }
+              }
+            });
+          }
+        }
       });
+
+      validation.totalEntities = totalObjects;
+      validation.validEntities = totalObjects;
 
       // Validaciones básicas
       if (validation.totalEntities === 0) {
@@ -122,7 +328,7 @@ class ILIService {
       }
 
       // Verificar elementos requeridos para catastro
-      const hasPredios = xmlContent.includes('LC_Predio') || xmlContent.includes('LC_PLOT');
+      const hasPredios = xmlContent.includes('LC_Predio') || xmlContent.includes('LC_PLOT') || xmlContent.includes('ilc_predio') || xmlContent.includes('ILC_Predio');
       if (!hasPredios) {
         validation.warnings.push('No se encontraron predios en el archivo');
       }
@@ -183,7 +389,8 @@ class ILIService {
     const modelFiles = {
       'antioquia': 'LADM-COL_Antioquia.ili',
       'igac': 'LADM-COL_IGAC.ili',
-      'ladm-col': 'LADM-COL.ili'
+      'ladm-col': 'LADM-COL.ili',
+      'modelo-interno': 'Modelo_Aplicacion_Interno_Levantamiento_Catastral_LADMCOL_V1_0.ili'
     };
 
     const modelFile = modelFiles[modelType] || modelFiles['antioquia'];
@@ -203,11 +410,15 @@ class ILIService {
   async convertXTFToPostgreSQL(xtfFilePath, modelType, schemaName) {
     try {
       console.log(`Convirtiendo XTF a PostgreSQL: ${xtfFilePath}`);
+      await this.preprocessXTFFile(xtfFilePath);
       
       const modelPath = await this.getModelPath(modelType);
-      
+      const ili2pgCmd = await this.getILI2PGCommand();
+      const dbParams = this.getDBParams();
+      const modelDirEscaped = this.modelsDir.replace(/\\/g, '/');
+      const xtfFilePathEscaped = xtfFilePath.replace(/\\/g, '/');
       // Comando ili2pg para importar XTF
-      const command = `ili2pg --import --model ${modelPath} --schema ${schemaName} --createEnumTabs --createMetaInfo --createFk --createFkIdx --createGeomIdx --createTidCol --createBasketCol --createTypeDiscriminator --createImportTabs --createEnumTabsWithId --createUnique --createNumChecks --createAreaChecks --createCoordChecks --createLineage --defaultSrsCode 3116 --createMetaInfo --createFk --createFkIdx --createGeomIdx --createTidCol --createBasketCol --createTypeDiscriminator --createImportTabs --createEnumTabsWithId --createUnique --createNumChecks --createAreaChecks --createCoordChecks --createLineage --defaultSrsCode 3116 --dbhost localhost --dbport 5432 --dbdatabase GP_CONES --dbusr postgres --dbpwd 12345 ${xtfFilePath}`;
+      const command = `${ili2pgCmd} --import --disableValidation --models ${this.getModelName(modelType)} --modeldir "${modelDirEscaped}" --dbschema ${schemaName} --smart2Inheritance --createEnumTabs --createMetaInfo --createFk --createFkIdx --createGeomIdx --createTidCol --createBasketCol --createTypeDiscriminator --createImportTabs --createEnumTabsWithId --createUnique --createNumChecks --defaultSrsCode 3116 ${dbParams} "${xtfFilePathEscaped}"`;
       
       console.log(`Ejecutando: ${command}`);
       
@@ -231,7 +442,7 @@ class ILIService {
       console.error('Error en conversión XTF:', error);
       
       // Si ili2pg no está disponible, simular conversión
-      if (error.code === 'ENOENT' || error.message.includes('ili2pg')) {
+      if (this.isCommandNotFoundError(error)) {
         console.log('ili2pg no disponible, simulando conversión');
         return await this.simulateConversion(xtfFilePath, schemaName);
       }
@@ -244,16 +455,38 @@ class ILIService {
   async simulateConversion(xtfFilePath, schemaName) {
     try {
       const xmlContent = await fs.readFile(xtfFilePath, 'utf8');
-      const parser = new xml2js.Parser();
+      const parser = new xml2js.Parser({
+        explicitRoot: false,
+        tagNameProcessors: [xml2js.processors.stripPrefix]
+      });
       const result = await parser.parseStringPromise(xmlContent);
       
-      let totalEntities = 0;
-      const datasets = result.DATASECTION?.DATASET || [];
+      // Find DATASECTION key in a case-insensitive manner
+      const keys = Object.keys(result || {});
+      const dataSectionKey = keys.find(k => k.toUpperCase() === 'DATASECTION');
+      const datasection = dataSectionKey ? result[dataSectionKey] : null;
       
-      datasets.forEach(dataset => {
-        const objects = dataset.OBJECT || [];
-        totalEntities += objects.length;
-      });
+      let totalEntities = 0;
+      if (datasection) {
+        const datasections = Array.isArray(datasection) ? datasection : [datasection];
+        datasections.forEach(dsSection => {
+          if (typeof dsSection === 'object' && dsSection !== null) {
+            for (const [key, value] of Object.entries(dsSection)) {
+              if (key === '$') continue;
+              const datasets = Array.isArray(value) ? value : [value];
+              datasets.forEach(dataset => {
+                if (typeof dataset === 'object' && dataset !== null) {
+                  for (const [classKey, classVal] of Object.entries(dataset)) {
+                    if (classKey === '$' || classKey === 'BID') continue;
+                    const objects = Array.isArray(classVal) ? classVal : [classVal];
+                    totalEntities += objects.length;
+                  }
+                }
+              });
+            }
+          }
+        });
+      }
 
       // Simular tiempo de procesamiento
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -313,9 +546,12 @@ class ILIService {
       console.log(`Creando schema ${schemaName} desde modelo ${modelType}`);
       
       const modelPath = await this.getModelPath(modelType);
+      const ili2pgCmd = await this.getILI2PGCommand();
+      const dbParams = this.getDBParams();
+      const modelDirEscaped = this.modelsDir.replace(/\\/g, '/');
       
       // Comando ili2pg para crear schema
-      const command = `ili2pg --create --model ${modelPath} --schema ${schemaName} --createEnumTabs --createMetaInfo --createFk --createFkIdx --createGeomIdx --createTidCol --createBasketCol --createTypeDiscriminator --createImportTabs --createEnumTabsWithId --createUnique --createNumChecks --createAreaChecks --createCoordChecks --createLineage --defaultSrsCode 3116 --dbhost localhost --dbport 5432 --dbdatabase GP_CONES --dbusr postgres --dbpwd 12345`;
+      const command = `${ili2pgCmd} --schemaimport --models ${this.getModelName(modelType)} --modeldir "${modelDirEscaped}" --dbschema ${schemaName} --smart2Inheritance --createEnumTabs --createMetaInfo --createFk --createFkIdx --createGeomIdx --createTidCol --createBasketCol --createTypeDiscriminator --createImportTabs --createEnumTabsWithId --createUnique --createNumChecks --defaultSrsCode 3116 ${dbParams}`;
       
       console.log(`Ejecutando: ${command}`);
       
@@ -338,7 +574,7 @@ class ILIService {
       console.error('Error creando schema:', error);
       
       // Si ili2pg no está disponible, simular creación
-      if (error.code === 'ENOENT' || error.message.includes('ili2pg')) {
+      if (this.isCommandNotFoundError(error)) {
         console.log('ili2pg no disponible, simulando creación de schema');
         return await this.simulateSchemaCreation(schemaName);
       }
@@ -390,51 +626,54 @@ class ILIService {
       const parser = new xml2js.Parser({
         explicitArray: false,
         mergeAttrs: true,
-        explicitRoot: false
+        explicitRoot: false,
+        tagNameProcessors: [xml2js.processors.stripPrefix]
       });
       const result = await parser.parseStringPromise(xmlContent);
       
+      // Find DATASECTION key in a case-insensitive manner
+      const keys = Object.keys(result || {});
+      const dataSectionKey = keys.find(k => k.toUpperCase() === 'DATASECTION');
+      const datasection = dataSectionKey ? result[dataSectionKey] : null;
+
       const info = {
-        hasDataSection: !!result.DATASECTION,
+        hasDataSection: !!datasection,
         datasets: 0,
         totalObjects: 0,
         objectTypes: []
       };
 
       // Contar datasets y objetos
-      if (result.DATASECTION) {
-        const datasets = Array.isArray(result.DATASECTION.DATASET) 
-          ? result.DATASECTION.DATASET 
-          : (result.DATASECTION.DATASET ? [result.DATASECTION.DATASET] : []);
-        
-        info.datasets = datasets.length;
+      if (datasection) {
         const objectTypesSet = new Set();
+        let datasetsCount = 0;
 
-        datasets.forEach(dataset => {
-          const objects = Array.isArray(dataset.OBJECT) 
-            ? dataset.OBJECT 
-            : (dataset.OBJECT ? [dataset.OBJECT] : []);
-          
-          info.totalObjects += objects.length;
-          
-          objects.forEach(obj => {
-            // Intentar obtener el tipo del objeto de diferentes formas
-            if (obj.$ && obj.$.TID) {
-              const type = obj.$.TID.split('_')[0];
-              objectTypesSet.add(type);
-            } else if (obj.TID) {
-              const type = obj.TID.split('_')[0];
-              objectTypesSet.add(type);
-            } else {
-              // Intentar obtener del nombre del objeto
-              const objKeys = Object.keys(obj).filter(k => k !== '$' && k !== 'TID');
-              if (objKeys.length > 0) {
-                objectTypesSet.add(objKeys[0]);
-              }
+        const datasections = Array.isArray(datasection) ? datasection : [datasection];
+        datasections.forEach(dsSection => {
+          if (typeof dsSection === 'object' && dsSection !== null) {
+            for (const [key, value] of Object.entries(dsSection)) {
+              if (key === '$') continue;
+              datasetsCount++;
+              
+              const datasets = Array.isArray(value) ? value : [value];
+              datasets.forEach(dataset => {
+                if (typeof dataset === 'object' && dataset !== null) {
+                  for (const [classKey, classVal] of Object.entries(dataset)) {
+                    if (classKey === '$' || classKey === 'BID') continue;
+                    const objects = Array.isArray(classVal) ? classVal : [classVal];
+                    info.totalObjects += objects.length;
+                    
+                    // Agregar tipo de objeto (limpiando el namespace si existe)
+                    const cleanType = classKey.includes('.') ? classKey.substring(classKey.lastIndexOf('.') + 1) : classKey;
+                    objectTypesSet.add(cleanType);
+                  }
+                }
+              });
             }
-          });
+          }
         });
 
+        info.datasets = datasetsCount;
         info.objectTypes = Array.from(objectTypesSet);
       }
       
@@ -459,9 +698,12 @@ class ILIService {
       
       const modelPath = await this.getModelPath(modelType);
       const { dataset = 'exported_data', basket = null } = options;
-      
+      const ili2pgCmd = await this.getILI2PGCommand();
+      const dbParams = this.getDBParams();
+      const modelDirEscaped = this.modelsDir.replace(/\\/g, '/');
+      const outputFilePathEscaped = outputFilePath.replace(/\\/g, '/');
       // Comando ili2pg para exportar a XTF
-      let command = `ili2pg --export --model ${modelPath} --schema ${schemaName} --dataset ${dataset} --dbhost localhost --dbport 5432 --dbdatabase GP_CONES --dbusr postgres --dbpwd 12345 --output ${outputFilePath}`;
+      let command = `${ili2pgCmd} --export --disableValidation --exportModels ${this.getModelName(modelType)} --modeldir "${modelDirEscaped}" --dbschema ${schemaName} --smart2Inheritance --dataset ${dataset} ${dbParams} "${outputFilePathEscaped}"`;
       
       if (basket) {
         command += ` --basket ${basket}`;
@@ -496,7 +738,7 @@ class ILIService {
       console.error('Error en exportación XTF:', error);
       
       // Si ili2pg no está disponible, simular exportación
-      if (error.code === 'ENOENT' || error.message.includes('ili2pg')) {
+      if (this.isCommandNotFoundError(error)) {
         console.log('ili2pg no disponible, simulando exportación');
         return await this.simulateExport(schemaName, outputFilePath, modelType);
       }

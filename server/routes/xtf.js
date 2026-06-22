@@ -16,7 +16,10 @@ const {
   getIntegrationStats,
   cleanIntegration,
   getUnifiedPredios,
-  exportXTF
+  exportXTF,
+  uploadExcel,
+  importExcel,
+  excelToXTF
 } = require('../controllers/xtfController');
 const { canExportXTF } = require('../middleware/auth');
 
@@ -29,6 +32,22 @@ router.post('/upload',
   authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
   upload.single('xtf_file'),
   uploadXTF
+);
+
+// Importar Excel de IGAC (R1/R2)
+// POST /api/xtf/import-excel
+router.post('/import-excel',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  uploadExcel.single('excel_file'),
+  importExcel
+);
+
+// Convertir Excel consolidado de IGAC a XTF y descargar
+// POST /api/xtf/excel-to-xtf
+router.post('/excel-to-xtf',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  uploadExcel.single('excel_file'),
+  excelToXTF
 );
 
 // Historia 6: Validación de modelos ILI
@@ -113,18 +132,27 @@ router.get('/uploads',
         ${whereClause || ''}
       `, status ? [status] : []);
 
-      const uploads = result.rows.map(upload => ({
-        id: upload.id,
-        filename: upload.filename,
-        model_type: upload.model_type === 'Antioquia Extendido' ? 'antioquia' : 'igac',
-        status: upload.status.toLowerCase(),
-        uploaded_at: upload.uploaded_at,
-        processed_at: upload.processed_at,
-        uploaded_by: upload.uploaded_by,
-        uploaded_by_name: upload.uploaded_by_name,
-        entities_count: upload.entities_count || 0,
-        file_size: `${(upload.file_size / 1024 / 1024).toFixed(2)}MB`
-      }));
+      const uploads = result.rows.map(upload => {
+        let modelType = 'igac';
+        if (upload.model_type === 'Antioquia Extendido') {
+          modelType = 'antioquia';
+        } else if (upload.model_type === 'Modelo Interno V 1.0.1') {
+          modelType = 'modelo-interno';
+        }
+        
+        return {
+          id: upload.id,
+          filename: upload.filename,
+          model_type: modelType,
+          status: upload.status.toLowerCase(),
+          uploaded_at: upload.uploaded_at,
+          processed_at: upload.processed_at,
+          uploaded_by: upload.uploaded_by,
+          uploaded_by_name: upload.uploaded_by_name,
+          entities_count: upload.entities_count || 0,
+          file_size: `${(upload.file_size / 1024 / 1024).toFixed(2)}MB`
+        };
+      });
 
       res.json({
         success: true,
@@ -177,6 +205,7 @@ router.get('/stats',
           CASE 
             WHEN xtf_type = 'Antioquia Extendido' THEN 'antioquia'
             WHEN xtf_type = 'IGAC 1.0' THEN 'igac'
+            WHEN xtf_type = 'Modelo Interno V 1.0.1' THEN 'modelo-interno'
             ELSE 'other'
           END as model,
           COUNT(*) as count
@@ -532,7 +561,7 @@ router.post('/upload/:upload_id/reprocess',
           `, [upload_id]);
           
           // Validar contra modelo ILI
-          const iliValidation = await iliService.validateAgainstILIModel(
+          const iliValidation = await iliService.validateXTFAgainstModel(
             fileInfo.file_path,
             finalModelType
           );
@@ -557,7 +586,7 @@ router.post('/upload/:upload_id/reprocess',
           `, [upload_id]);
           
           // Importar a PostgreSQL usando iliService
-          const importResult = await iliService.importXTFToPostgreSQL(
+          const importResult = await iliService.convertXTFToPostgreSQL(
             fileInfo.file_path,
             finalModelType,
             finalSchemaName
@@ -569,7 +598,7 @@ router.post('/upload/:upload_id/reprocess',
           `, [upload_id, JSON.stringify(importResult)]);
           
           // Integrar al schema principal
-          const integrationResult = await xtfIntegrationService.integrateSchema(finalSchemaName);
+          const integrationResult = await xtfIntegrationService.integrateXTFToMainSchema(finalSchemaName);
           
           await query(`
             INSERT INTO xtf_processing_logs (upload_id, log_level, message, details)

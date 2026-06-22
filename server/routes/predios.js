@@ -14,10 +14,11 @@ router.use(authenticateToken);
 
 // POST /api/predios - Crear nuevo predio
 router.post('/', [
+  authorizeRole(['Administrador del Sistema', 'Reconocedor Predial', 'Digitador Alfanumérico', 'Revisión de Calidad']),
   // Validaciones para el registro de predios
   body('npn')
     .notEmpty().withMessage('El NPN es obligatorio')
-    .isLength({ min: 1, max: 50 }).withMessage('El NPN debe tener entre 1 y 50 caracteres'),
+    .matches(/^[0-9]{30}$/).withMessage('El NPN debe ser de exactamente 30 dígitos numéricos'),
   
   body('municipio')
     .notEmpty().withMessage('El municipio es obligatorio')
@@ -40,12 +41,10 @@ router.post('/', [
     .isFloat({ min: 0 }).withMessage('El área debe ser un número positivo'),
   
   body('tipo_predio')
-    .optional()
-    .isIn(['URBANO', 'RURAL', 'MIXTO']).withMessage('El tipo de predio debe ser URBANO, RURAL o MIXTO'),
+    .optional(),
   
   body('uso_predio')
-    .optional()
-    .isIn(['RESIDENCIAL', 'COMERCIAL', 'INDUSTRIAL', 'AGRICOLA']).withMessage('Uso de predio inválido'),
+    .optional(),
   
   body('propietario_nombre')
     .optional()
@@ -56,11 +55,10 @@ router.post('/', [
     .isLength({ max: 20 }).withMessage('El documento del propietario no puede exceder 20 caracteres'),
   
   body('propietario_tipo_documento')
-    .optional()
-    .isIn(['CC', 'CE', 'NIT', 'RUT']).withMessage('Tipo de documento inválido'),
+    .optional(),
   
   body('geometry')
-    .notEmpty().withMessage('La geometría del predio es obligatoria')
+    .optional({ nullable: true })
     .isObject().withMessage('La geometría debe ser un objeto GeoJSON válido')
 ], prediosController.createPredio);
 
@@ -74,19 +72,46 @@ router.get('/', prediosController.getPredios.bind(prediosController));
 // GET /api/predios/stats - Obtener estadísticas de predios
 router.get('/stats', prediosController.getPrediosStats);
 
+// GET /api/predios/type-options - Obtener opciones de tipo para LADM-COL
+router.get('/type-options', prediosController.getTypeOptions);
+
+// =====================================================
+// RUTAS LADM-COL (deben ir ANTES de las rutas dinámicas /:id)
+// =====================================================
+
+// POST /api/predios/construcciones - Crear construcción LADM-COL
+router.post('/construcciones', prediosController.createConstruccion);
+
+// PUT /api/predios/construcciones/:caracteristica - Actualizar construcción LADM-COL
+router.put('/construcciones/:caracteristica', prediosController.updateConstruccion);
+
+// PUT /api/predios/calificaciones/:caracteristica - Actualizar calificaciones convencional LADM-COL
+router.put('/calificaciones/:caracteristica', prediosController.updateCalificacion);
+
 // GET /api/predios/:id - Obtener predio por ID
 router.get('/:id', [
-  param('id').isUUID().withMessage('ID de predio inválido')
+  param('id').custom(value => {
+    if (/^\d+$/.test(value)) return true;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(value)) return true;
+    throw new Error('ID de predio inválido, debe ser un UUID o un número entero');
+  })
 ], prediosController.getPredioById);
 
 // PUT /api/predios/:id - Actualizar predio
 router.put('/:id', [
-  param('id').isUUID().withMessage('ID de predio inválido'),
+  authorizeRole(['Administrador del Sistema', 'Reconocedor Predial']),
+  param('id').custom(value => {
+    if (/^\d+$/.test(value)) return true;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(value)) return true;
+    throw new Error('ID de predio inválido, debe ser un UUID o un número entero');
+  }),
   
   // Validaciones opcionales para actualización
   body('npn')
     .optional()
-    .isLength({ min: 1, max: 50 }).withMessage('El NPN debe tener entre 1 y 50 caracteres'),
+    .matches(/^[0-9]{30}$/).withMessage('El NPN debe ser de exactamente 30 dígitos numéricos'),
   
   body('municipio')
     .optional()
@@ -109,12 +134,22 @@ router.put('/:id', [
     .isFloat({ min: 0 }).withMessage('El área debe ser un número positivo'),
   
   body('tipo_predio')
-    .optional()
-    .isIn(['URBANO', 'RURAL', 'MIXTO']).withMessage('El tipo de predio debe ser URBANO, RURAL o MIXTO'),
+    .optional(),
   
   body('uso_predio')
-    .optional()
-    .isIn(['RESIDENCIAL', 'COMERCIAL', 'INDUSTRIAL', 'AGRICOLA', 'PECUARIO', 'FORESTAL', 'MINERO', 'ESPECIAL']).withMessage('Uso de predio inválido'),
+    .optional(),
+  
+  body('departamento')
+    .optional(),
+  
+  body('codigo_orip')
+    .optional(),
+  
+  body('condicion_predio')
+    .optional(),
+  
+  body('nombre')
+    .optional(),
   
   body('propietario_nombre')
     .optional()
@@ -139,7 +174,13 @@ router.put('/:id', [
 
 // PATCH /api/predios/:id/status - Cambiar estado del predio
 router.patch('/:id/status', [
-  param('id').isUUID().withMessage('ID de predio inválido'),
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  param('id').custom(value => {
+    if (/^\d+$/.test(value)) return true;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(value)) return true;
+    throw new Error('ID de predio inválido, debe ser un UUID o un número entero');
+  }),
   
   body('estado')
     .notEmpty().withMessage('El estado es obligatorio')
@@ -149,6 +190,17 @@ router.patch('/:id/status', [
     .optional()
     .isLength({ max: 500 }).withMessage('Las observaciones no pueden exceder 500 caracteres')
 ], prediosController.changePredioStatus);
+
+// DELETE /api/predios/:id - Eliminar predio
+router.delete('/:id', [
+  authorizeRole(['Administrador del Sistema']),
+  param('id').custom(value => {
+    if (/^\d+$/.test(value)) return true;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(value)) return true;
+    throw new Error('ID de predio inválido, debe ser un UUID o un número entero');
+  })
+], prediosController.deletePredio);
 
 // =====================================================
 // RUTAS ESPECÍFICAS POR ROL
@@ -412,242 +464,6 @@ router.get('/export/csv', async (req, res) => {
     console.error('Error en export csv:', error);
     res.status(500).json({
       success: false,
-      error: 'Error interno del servidor',
-      message: 'No se pudo exportar a CSV'
-    });
-  }
-});
-
-// =====================================================
-// RUTAS DE CONSULTA CON FILTROS
-// =====================================================
-
-// GET /api/predios/search - Consultar predios con filtros avanzados
-router.get('/search', [
-  // Validaciones para consultas
-  query('npn')
-    .optional()
-    .isLength({ max: 50 }).withMessage('El NPN no puede exceder 50 caracteres'),
-  
-  query('municipio')
-    .optional()
-    .isLength({ max: 100 }).withMessage('El municipio no puede exceder 100 caracteres'),
-  
-  query('zona')
-    .optional()
-    .isLength({ max: 100 }).withMessage('La zona no puede exceder 100 caracteres'),
-  
-  query('sector')
-    .optional()
-    .isLength({ max: 100 }).withMessage('El sector no puede exceder 100 caracteres'),
-  
-  query('numero_ficha')
-    .optional()
-    .isLength({ max: 50 }).withMessage('El número de ficha no puede exceder 50 caracteres'),
-  
-  query('estado')
-    .optional()
-    .isIn(['Borrador', 'En Revisión', 'Aprobado', 'Rechazado']).withMessage('Estado de predio inválido'),
-  
-  query('tipo_predio')
-    .optional()
-    .isIn(['URBANO', 'RURAL', 'MIXTO']).withMessage('Tipo de predio inválido'),
-  
-  query('uso_predio')
-    .optional()
-    .isIn(['RESIDENCIAL', 'COMERCIAL', 'INDUSTRIAL', 'AGRICOLA']).withMessage('Uso de predio inválido'),
-  
-  query('page')
-    .optional()
-    .isInt({ min: 1 }).withMessage('La página debe ser un número entero positivo'),
-  
-  query('limit')
-    .optional()
-    .isInt({ min: 1, max: 100 }).withMessage('El límite debe ser entre 1 y 100'),
-  
-  query('sort_by')
-    .optional()
-    .isIn(['npn', 'municipio', 'created_at', 'estado', 'area_hectareas']).withMessage('Campo de ordenamiento inválido'),
-  
-  query('sort_order')
-    .optional()
-    .isIn(['ASC', 'DESC']).withMessage('El orden debe ser ASC o DESC')
-], prediosController.getPredios);
-
-// GET /api/predios/stats - Estadísticas de predios
-router.get('/stats', prediosController.getPrediosStats);
-
-// GET /api/predios/:id - Obtener predio específico
-router.get('/:id', [
-  param('id')
-    .isUUID().withMessage('El ID del predio debe ser un UUID válido')
-], prediosController.getPredioById);
-
-// =====================================================
-// OPERACIONES DE ACTUALIZACIÓN
-// =====================================================
-
-// PUT /api/predios/:id - Actualizar predio existente
-router.put('/:id', [
-  param('id')
-    .isUUID().withMessage('El ID del predio debe ser un UUID válido'),
-  
-  // Validaciones para actualización
-  body('npn')
-    .optional()
-    .isLength({ min: 1, max: 50 }).withMessage('El NPN debe tener entre 1 y 50 caracteres'),
-  
-  body('municipio')
-    .optional()
-    .isLength({ min: 1, max: 100 }).withMessage('El municipio debe tener entre 1 y 100 caracteres'),
-  
-  body('zona')
-    .optional()
-    .isLength({ max: 100 }).withMessage('La zona no puede exceder 100 caracteres'),
-  
-  body('sector')
-    .optional()
-    .isLength({ max: 100 }).withMessage('El sector no puede exceder 100 caracteres'),
-  
-  body('numero_ficha')
-    .optional()
-    .isLength({ max: 50 }).withMessage('El número de ficha no puede exceder 50 caracteres'),
-  
-  body('area_hectareas')
-    .optional()
-    .isFloat({ min: 0 }).withMessage('El área debe ser un número positivo'),
-  
-  body('tipo_predio')
-    .optional()
-    .isIn(['URBANO', 'RURAL', 'MIXTO']).withMessage('El tipo de predio debe ser URBANO, RURAL o MIXTO'),
-  
-  body('uso_predio')
-    .optional()
-    .isIn(['RESIDENCIAL', 'COMERCIAL', 'INDUSTRIAL', 'AGRICOLA']).withMessage('Uso de predio inválido'),
-  
-  body('propietario_nombre')
-    .optional()
-    .isLength({ max: 200 }).withMessage('El nombre del propietario no puede exceder 200 caracteres'),
-  
-  body('propietario_documento')
-    .optional()
-    .isLength({ max: 20 }).withMessage('El documento del propietario no puede exceder 20 caracteres'),
-  
-  body('propietario_tipo_documento')
-    .optional()
-    .isIn(['CC', 'CE', 'NIT', 'RUT']).withMessage('Tipo de documento inválido'),
-  
-  body('geometry')
-    .optional()
-    .isObject().withMessage('La geometría debe ser un objeto GeoJSON válido')
-], prediosController.updatePredio);
-
-// =====================================================
-// GESTIÓN DE ESTADOS (FLUJO DE TRABAJO)
-// =====================================================
-
-// PATCH /api/predios/:id/status - Cambiar estado del predio
-router.patch('/:id/status', [
-  param('id')
-    .isUUID().withMessage('El ID del predio debe ser un UUID válido'),
-  
-  body('newStatus')
-    .notEmpty().withMessage('El nuevo estado es obligatorio')
-    .isIn(['Borrador', 'En Revisión', 'Aprobado', 'Rechazado']).withMessage('Estado inválido'),
-  
-  body('observaciones')
-    .optional()
-    .isLength({ max: 1000 }).withMessage('Las observaciones no pueden exceder 1000 caracteres')
-], prediosController.changePredioStatus);
-
-// =====================================================
-// RUTAS ESPECÍFICAS POR ROL
-// =====================================================
-
-// Ruta para Reconocedores Prediales - Solo pueden ver y crear predios
-router.get('/reconocedor/mis-predios', [
-  authorizeRole(['Reconocedor Predial'])
-], async (req, res) => {
-  try {
-    // Implementar lógica para mostrar solo predios del reconocedor
-    res.json({
-      message: 'Lista de predios del reconocedor',
-      success: true,
-      data: []
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: 'Error interno del servidor',
-      message: 'No se pudieron obtener los predios del reconocedor'
-    });
-  }
-});
-
-// Ruta para Revisión de Calidad - Solo pueden ver predios en revisión
-router.get('/revision/por-revisar', [
-  authorizeRole(['Revisión de Calidad'])
-], async (req, res) => {
-  try {
-    // Implementar lógica para mostrar predios que requieren revisión
-    res.json({
-      message: 'Lista de predios por revisar',
-      success: true,
-      data: []
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: 'Error interno del servidor',
-      message: 'No se pudieron obtener los predios por revisar'
-    });
-  }
-});
-
-// =====================================================
-// EXPORTACIÓN DE DATOS
-// =====================================================
-
-// GET /api/predios/export/geojson - Exportar predios en formato GeoJSON
-router.get('/export/geojson', [
-  query('estado')
-    .optional()
-    .isIn(['Borrador', 'En Revisión', 'Aprobado', 'Rechazado']).withMessage('Estado de predio inválido'),
-  
-  query('municipio')
-    .optional()
-    .isLength({ max: 100 }).withMessage('El municipio no puede exceder 100 caracteres')
-], async (req, res) => {
-  try {
-    // TODO: Implementar exportación a GeoJSON
-    res.json({
-      message: 'Exportación a GeoJSON (pendiente de implementación)',
-      success: true
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: 'Error interno del servidor',
-      message: 'No se pudo exportar a GeoJSON'
-    });
-  }
-});
-
-// GET /api/predios/export/csv - Exportar predios en formato CSV
-router.get('/export/csv', [
-  query('estado')
-    .optional()
-    .isIn(['Borrador', 'En Revisión', 'Aprobado', 'Rechazado']).withMessage('Estado de predio inválido'),
-  
-  query('municipio')
-    .optional()
-    .isLength({ max: 100 }).withMessage('El municipio no puede exceder 100 caracteres')
-], async (req, res) => {
-  try {
-    // TODO: Implementar exportación a CSV
-    res.json({
-      message: 'Exportación a CSV (pendiente de implementación)',
-      success: true
-    });
-  } catch (error) {
-    res.status(500).json({
       error: 'Error interno del servidor',
       message: 'No se pudo exportar a CSV'
     });

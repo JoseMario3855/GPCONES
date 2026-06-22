@@ -18,7 +18,7 @@ import axios from 'axios';
 const { Title, Text } = Typography;
 
 const Dashboard = () => {
-  const { user, permissions } = useAuth();
+  const { user, permissions, municipioSeleccionado } = useAuth();
   const [stats, setStats] = useState({
     total: {
       total_predios: 0,
@@ -33,14 +33,19 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [municipioSeleccionado]);
 
   const loadDashboardData = async () => {
     try {
       setLoading(true);
       
       // Cargar estadísticas de predios
-      const statsResponse = await axios.get('/api/predios/stats');
+      const params = {};
+      if (municipioSeleccionado?.schema_name) {
+        params.schema_name = municipioSeleccionado.schema_name;
+      }
+      
+      const statsResponse = await axios.get('/api/predios/stats', { params });
       if (statsResponse.data.success && statsResponse.data.data) {
         const apiData = statsResponse.data.data;
         const general = apiData.general || {};

@@ -10,10 +10,8 @@ import {
   Tag,
   Tabs,
   message,
-  Spin,
   Row,
   Col,
-  Divider,
   Tooltip
 } from 'antd';
 import {
@@ -22,12 +20,13 @@ import {
   UserOutlined,
   HomeOutlined,
   DatabaseOutlined,
-  DownloadOutlined,
-  ReloadOutlined,
-  EnvironmentOutlined
+  EnvironmentOutlined,
+  EyeOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
+import PredioModal from '../predios/PredioModal';
+import { mapPredio, mapPropietario, mapConstruccion } from '../predios/predioMapper';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -44,15 +43,40 @@ const ConsultaAlfanumerico = () => {
   const [propietarios, setPropietarios] = useState([]);
   const [construcciones, setConstrucciones] = useState([]);
   const [calificaciones, setCalificaciones] = useState([]);
+  const [calificacionesDetalle, setCalificacionesDetalle] = useState([]);
   const [construccionesGenerales, setConstruccionesGenerales] = useState([]);
   const [colindantes, setColindantes] = useState([]);
   const [cartografia, setCartografia] = useState([]);
+
+  // Estados para visualizar detalles en PredioModal (parte geográfica)
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [selectedPredio, setSelectedPredio] = useState(null);
+  const [propietariosDetalle, setPropietariosDetalle] = useState([]);
+  const [loadingPropietarios, setLoadingPropietarios] = useState(false);
+  const [construccionesDetalle, setConstruccionesDetalle] = useState([]);
+  const [loadingConstrucciones, setLoadingConstrucciones] = useState(false);
+  const [calificacionesDetalleModal, setCalificacionesDetalleModal] = useState([]);
+  const [loadingCalificaciones, setLoadingCalificaciones] = useState(false);
+  const [typeOptions, setTypeOptions] = useState({
+    condiciones: [],
+    destinaciones: [],
+    tipos: [],
+    documentoTypes: [],
+    derechoTypes: [],
+    fuenteTypes: [],
+    disponibilidadTypes: [],
+    ucTipos: [],
+    ucUsos: [],
+    ucPlantas: [],
+    ucTradicionales: []
+  });
+  const [loadingOptions, setLoadingOptions] = useState(false);
   
   const consultarCalificaciones = async () => {
     try {
       const params = {
         schema_name: selectedSchema,
-        ...filters
+        ...getFilterParams()
       };
       
       Object.keys(params).forEach(key => {
@@ -73,11 +97,36 @@ const ConsultaAlfanumerico = () => {
     }
   };
 
+  const consultarCalificacionesDetalle = async () => {
+    try {
+      const params = {
+        schema_name: selectedSchema,
+        ...getFilterParams()
+      };
+      
+      Object.keys(params).forEach(key => {
+        if (!params[key] || params[key] === '') {
+          delete params[key];
+        }
+      });
+
+      const response = await axios.get('/api/consulta-alfanumerico/calificaciones-detalle', { params });
+      
+      if (response.data.success) {
+        setCalificacionesDetalle(response.data.data);
+        message.success(`${response.data.data.length} detalles de calificaciones encontrados`);
+      }
+    } catch (error) {
+      console.error('Error consultando detalle de calificaciones:', error);
+      throw error;
+    }
+  };
+
   const consultarConstruccionesGenerales = async () => {
     try {
       const params = {
         schema_name: selectedSchema,
-        ...filters
+        ...getFilterParams()
       };
       
       Object.keys(params).forEach(key => {
@@ -102,7 +151,7 @@ const ConsultaAlfanumerico = () => {
     try {
       const params = {
         schema_name: selectedSchema,
-        ...filters
+        ...getFilterParams()
       };
       
       Object.keys(params).forEach(key => {
@@ -127,7 +176,7 @@ const ConsultaAlfanumerico = () => {
     try {
       const params = {
         schema_name: selectedSchema,
-        ...filters
+        ...getFilterParams()
       };
       
       Object.keys(params).forEach(key => {
@@ -148,12 +197,48 @@ const ConsultaAlfanumerico = () => {
     }
   };
   
-  // Filtros
-  const [filters, setFilters] = useState({
-    nroFicha: '',
-    npn: '',
-    matriculaInmobiliaria: ''
-  });
+  // Filtros de búsqueda unificados
+  const [searchType, setSearchType] = useState('ficha'); // 'npn', 'ficha', 'matricula', 'documento'
+  const [searchValue, setSearchValue] = useState('');
+
+  const getFilterParams = () => {
+    const filterParams = {};
+    if (searchValue && searchValue.trim() !== '') {
+      const val = searchValue.trim();
+      switch (searchType) {
+        case 'ficha':
+          filterParams.nroFicha = val;
+          break;
+        case 'npn':
+          filterParams.npn = val;
+          break;
+        case 'matricula':
+          filterParams.matriculaInmobiliaria = val;
+          break;
+        case 'documento':
+          filterParams.documento = val;
+          break;
+        default:
+          break;
+      }
+    }
+    return filterParams;
+  };
+
+  const getPlaceholder = () => {
+    switch (searchType) {
+      case 'ficha':
+        return 'Ej: 1027261';
+      case 'npn':
+        return 'Ej: 0588701000015000100579';
+      case 'matricula':
+        return 'Ej: 58227';
+      case 'documento':
+        return 'Ej: 10452345 o 800192834 (NIT/Cédula)';
+      default:
+        return 'Buscar...';
+    }
+  };
 
   useEffect(() => {
     loadSchemas();
@@ -165,6 +250,90 @@ const ConsultaAlfanumerico = () => {
       setSelectedSchema(municipioSeleccionado.schema_name);
     }
   }, [municipioSeleccionado]);
+
+  // Cargar typeOptions al cambiar de schema para que estén disponibles en el PredioModal
+  const loadTypeOptions = async (schema) => {
+    if (!schema) return;
+    setLoadingOptions(true);
+    try {
+      const response = await axios.get(`/api/predios/type-options?schema=${schema}`);
+      if (response.data.success) {
+        setTypeOptions(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error cargando opciones de tipo:', error);
+    } finally {
+      setLoadingOptions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedSchema) {
+      loadTypeOptions(selectedSchema);
+    } else {
+      setTypeOptions({
+        condiciones: [],
+        destinaciones: [],
+        tipos: [],
+        documentoTypes: [],
+        derechoTypes: [],
+        fuenteTypes: [],
+        disponibilidadTypes: [],
+        ucTipos: [],
+        ucUsos: [],
+        ucPlantas: [],
+        ucTradicionales: []
+      });
+    }
+  }, [selectedSchema]);
+
+  const handleViewDetails = async (record) => {
+    const mappedPredio = mapPredio(record);
+    setSelectedPredio(mappedPredio);
+    setDetailModalVisible(true);
+    
+    const predioId = record.predio_t_id || record.t_id || record.id;
+    const npn = mappedPredio.npn;
+    
+    if (predioId) {
+      await reloadDetails(predioId, npn);
+    }
+  };
+
+  const reloadDetails = async (predioId, npn) => {
+    setLoadingPropietarios(true);
+    setLoadingConstrucciones(true);
+    setLoadingCalificaciones(true);
+    
+    try {
+      const schemaParam = selectedSchema ? `?schema=${selectedSchema}` : '';
+      
+      // Propietarios
+      const ownersResponse = await axios.get(`/api/predios/${predioId}/propietarios${schemaParam}`);
+      if (ownersResponse.data.success) {
+        setPropietariosDetalle(ownersResponse.data.data.map(mapPropietario));
+      }
+      
+      // Construcciones
+      const constResponse = await axios.get(`/api/predios/${predioId}/construcciones${schemaParam}`);
+      if (constResponse.data.success) {
+        setConstruccionesDetalle(constResponse.data.data.map((c, index) => mapConstruccion(c, index)));
+      }
+      
+      // Calificaciones
+      const calResponse = await axios.get(`/api/predios/calificaciones?predioId=${predioId}&schema=${selectedSchema || ''}`);
+      if (calResponse.data.success) {
+        setCalificacionesDetalleModal(calResponse.data.data);
+      }
+    } catch (error) {
+      console.error('Error cargando detalles del predio:', error);
+      message.error('Error al cargar la información detallada del predio');
+    } finally {
+      setLoadingPropietarios(false);
+      setLoadingConstrucciones(false);
+      setLoadingCalificaciones(false);
+    }
+  };
 
   const loadSchemas = async () => {
     try {
@@ -199,6 +368,9 @@ const ConsultaAlfanumerico = () => {
         case 'calificaciones':
           await consultarCalificaciones();
           break;
+        case 'calificaciones-detalle':
+          await consultarCalificacionesDetalle();
+          break;
         case 'construcciones-generales':
           await consultarConstruccionesGenerales();
           break;
@@ -223,7 +395,7 @@ const ConsultaAlfanumerico = () => {
     try {
       const params = {
         schema_name: selectedSchema,
-        ...filters
+        ...getFilterParams()
       };
       
       // Limpiar filtros vacíos
@@ -249,7 +421,7 @@ const ConsultaAlfanumerico = () => {
     try {
       const params = {
         schema_name: selectedSchema,
-        ...filters
+        ...getFilterParams()
       };
       
       Object.keys(params).forEach(key => {
@@ -274,7 +446,7 @@ const ConsultaAlfanumerico = () => {
     try {
       const params = {
         schema_name: selectedSchema,
-        ...filters
+        ...getFilterParams()
       };
       
       Object.keys(params).forEach(key => {
@@ -295,24 +467,51 @@ const ConsultaAlfanumerico = () => {
     }
   };
 
-  // Generar columnas dinámicas basadas en los datos
+  // Generar columnas dinámicas basadas en los datos, excluyendo campos de geometría/internos
   const getDynamicColumns = (data) => {
     if (!data || data.length === 0) return [];
     
     const firstRow = data[0];
-    return Object.keys(firstRow).map(key => ({
-      title: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-      dataIndex: key,
-      key: key,
-      width: 150,
-      ellipsis: true,
-      render: (text) => {
-        if (text === null || text === undefined || text === '') return <Text type="secondary">-</Text>;
-        if (typeof text === 'boolean') return <Tag color={text ? 'green' : 'red'}>{text.toString()}</Tag>;
-        if (typeof text === 'number') return <Text strong>{text.toLocaleString()}</Text>;
-        return <Text>{String(text)}</Text>;
-      }
-    }));
+    const excludedKeys = ['predio_t_id', 'geometry', 'construction_geometries', 'constructionGeometries', 'geometry_geojson'];
+    
+    const cols = Object.keys(firstRow)
+      .filter(key => !excludedKeys.includes(key))
+      .map(key => ({
+        title: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        dataIndex: key,
+        key: key,
+        width: 150,
+        ellipsis: true,
+        render: (text) => {
+          if (text === null || text === undefined || text === '') return <Text type="secondary">-</Text>;
+          if (typeof text === 'boolean') return <Tag color={text ? 'green' : 'red'}>{text.toString()}</Tag>;
+          if (typeof text === 'number') return <Text strong>{text.toLocaleString()}</Text>;
+          return <Text>{String(text)}</Text>;
+        }
+      }));
+
+    if (activeTab === 'fichas') {
+      cols.push({
+        title: 'Acciones',
+        key: 'actions',
+        fixed: 'right',
+        width: 100,
+        render: (_, record) => (
+          <Space>
+            <Tooltip title="Ver detalles y mapa">
+              <Button 
+                type="text" 
+                icon={<EyeOutlined />} 
+                size="small"
+                onClick={() => handleViewDetails(record)}
+              />
+            </Tooltip>
+          </Space>
+        )
+      });
+    }
+
+    return cols;
   };
 
   return (
@@ -375,33 +574,34 @@ const ConsultaAlfanumerico = () => {
       </Card>
 
       {/* Filtros */}
-      <Card style={{ marginTop: '24px' }} size="small">
-        <Row gutter={16}>
-          <Col span={8}>
-            <Text strong>Número de Ficha:</Text>
-            <Input
-              placeholder="Ej: 1027261"
-              value={filters.nroFicha}
-              onChange={(e) => setFilters({ ...filters, nroFicha: e.target.value })}
-              style={{ marginTop: '8px' }}
-            />
+      <Card style={{ marginTop: '24px' }} size="small" title={<Text strong>Filtros de Búsqueda</Text>}>
+        <Row gutter={16} align="middle">
+          <Col xs={24} sm={8} md={6}>
+            <Text type="secondary" style={{ display: 'block', marginBottom: '8px' }}>Buscar por:</Text>
+            <Select
+              style={{ width: '100%' }}
+              value={searchType}
+              onChange={(value) => {
+                setSearchType(value);
+                setSearchValue(''); // Limpiar valor al cambiar tipo
+              }}
+            >
+              <Option value="ficha">Número de Ficha</Option>
+              <Option value="npn">NPN (Predial Nacional)</Option>
+              <Option value="matricula">Matrícula Inmobiliaria</Option>
+              <Option value="documento">Documento de Propietario (NIT/Cédula)</Option>
+            </Select>
           </Col>
-          <Col span={8}>
-            <Text strong>NPN:</Text>
-            <Input
-              placeholder="Ej: 0588701000015000100579"
-              value={filters.npn}
-              onChange={(e) => setFilters({ ...filters, npn: e.target.value })}
-              style={{ marginTop: '8px' }}
-            />
-          </Col>
-          <Col span={8}>
-            <Text strong>Matrícula Inmobiliaria:</Text>
-            <Input
-              placeholder="Ej: 58227"
-              value={filters.matriculaInmobiliaria}
-              onChange={(e) => setFilters({ ...filters, matriculaInmobiliaria: e.target.value })}
-              style={{ marginTop: '8px' }}
+          <Col xs={24} sm={16} md={18}>
+            <Text type="secondary" style={{ display: 'block', marginBottom: '8px' }}>Valor de búsqueda:</Text>
+            <Input.Search
+              placeholder={getPlaceholder()}
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              onSearch={handleConsultar}
+              enterButton="Buscar"
+              loading={loading}
+              allowClear
             />
           </Col>
         </Row>
@@ -425,7 +625,7 @@ const ConsultaAlfanumerico = () => {
                 <Table
                   columns={getDynamicColumns(fichas)}
                   dataSource={fichas}
-                  rowKey="t_id"
+                  rowKey={(record) => record.predio_t_id || record.t_id || record.id || record.NroFicha}
                   loading={loading}
                   scroll={{ x: 'max-content' }}
                   pagination={{
@@ -506,6 +706,29 @@ const ConsultaAlfanumerico = () => {
               )
             },
             {
+              key: 'calificaciones-detalle',
+              label: (
+                <span>
+                  <FileTextOutlined />
+                  Detalle Calificaciones
+                </span>
+              ),
+              children: (
+                <Table
+                  columns={getDynamicColumns(calificacionesDetalle)}
+                  dataSource={calificacionesDetalle}
+                  rowKey="caracteristica"
+                  loading={loading}
+                  scroll={{ x: 'max-content' }}
+                  pagination={{
+                    pageSize: 20,
+                    showSizeChanger: true,
+                    showTotal: (total) => `${total} registros`
+                  }}
+                />
+              )
+            },
+            {
               key: 'construcciones-generales',
               label: (
                 <span>
@@ -577,6 +800,29 @@ const ConsultaAlfanumerico = () => {
           ]}
         />
       </Card>
+
+      {/* Modal de Detalles y Mapa Geográfico */}
+      {detailModalVisible && selectedPredio && (
+        <PredioModal
+          predio={selectedPredio}
+          propietarios={propietariosDetalle}
+          construcciones={construccionesDetalle}
+          calificaciones={calificacionesDetalleModal}
+          onClose={() => {
+            setDetailModalVisible(false);
+            setSelectedPredio(null);
+          }}
+          canManagePredios={false}
+          handleEditPredio={null}
+          handleDeletePredio={null}
+          loadingPropietarios={loadingPropietarios}
+          loadingConstrucciones={loadingConstrucciones}
+          loadingCalificaciones={loadingCalificaciones}
+          typeOptions={typeOptions}
+          selectedSchema={selectedSchema}
+          onRefresh={() => reloadDetails(selectedPredio.t_id || selectedPredio.id, selectedPredio.npn)}
+        />
+      )}
     </div>
   );
 };

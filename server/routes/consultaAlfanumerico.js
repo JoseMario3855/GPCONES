@@ -19,6 +19,9 @@ router.get('/construcciones', consultaAlfanumericoController.consultarConstrucci
 // GET /api/consulta-alfanumerico/calificaciones-construcciones - Consultar CalificacionesConstrucciones
 router.get('/calificaciones-construcciones', consultaAlfanumericoController.consultarCalificacionesConstrucciones);
 
+// GET /api/consulta-alfanumerico/calificaciones-detalle - Consultar CalificacionesDetalle
+router.get('/calificaciones-detalle', consultaAlfanumericoController.consultarCalificacionesDetalle);
+
 // GET /api/consulta-alfanumerico/construcciones-generales - Consultar ConstruccionesGenerales
 router.get('/construcciones-generales', consultaAlfanumericoController.consultarConstruccionesGenerales);
 

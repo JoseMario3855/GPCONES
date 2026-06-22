@@ -721,8 +721,7 @@ const listSchemas = async (req, res) => {
     const result = await query(`
       SELECT 
         schema_name,
-        schema_owner,
-        created_at
+        schema_owner
       FROM information_schema.schemata 
       WHERE schema_name LIKE 'ladm_%'
       ORDER BY schema_name

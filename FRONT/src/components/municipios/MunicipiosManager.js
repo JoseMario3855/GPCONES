@@ -25,7 +25,8 @@ import {
   SearchOutlined,
   EnvironmentOutlined,
   LinkOutlined,
-  DisconnectOutlined
+  DisconnectOutlined,
+  FileExcelOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 
@@ -142,6 +143,52 @@ const MunicipiosManager = () => {
     }
   };
 
+  const handleExportarConsolidado = async (municipio) => {
+    try {
+      message.loading({ content: 'Generando consolidado de Excel...', key: 'exportExcel', duration: 0 });
+      const response = await axios.get(`/api/municipios/${municipio.id}/exportar-consolidado`, {
+        responseType: 'blob'
+      });
+
+      // Crear enlace temporal para descargar
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const fileName = `consolidado_${municipio.nombre.toLowerCase().replace(/[^a-z0-9]/g, '_')}.xlsx`;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      
+      // Limpieza
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      message.success({ content: 'Consolidado exportado exitosamente', key: 'exportExcel' });
+    } catch (error) {
+      console.error('Error exportando consolidado:', error);
+      
+      // Tratar de decodificar el error si vino como blob
+      if (error.response && error.response.data instanceof Blob) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const errData = JSON.parse(reader.result);
+            message.error({ content: errData.message || 'Error exportando consolidado', key: 'exportExcel' });
+          } catch (e) {
+            message.error({ content: 'Error exportando consolidado', key: 'exportExcel' });
+          }
+        };
+        reader.readAsText(error.response.data);
+      } else {
+        message.error({ content: error.response?.data?.message || 'Error exportando consolidado', key: 'exportExcel' });
+      }
+    }
+  };
+
   const openModal = async (municipio) => {
     setSelectedMunicipio(municipio);
     setModalVisible(true);
@@ -208,16 +255,28 @@ const MunicipiosManager = () => {
     {
       title: 'Acciones',
       key: 'actions',
-      width: 150,
+      width: 280,
       render: (_, record) => (
-        <Button
-          type="primary"
-          size="small"
-          onClick={() => openModal(record)}
-          icon={<LinkOutlined />}
-        >
-          Gestionar Schemas
-        </Button>
+        <Space size="middle">
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => openModal(record)}
+            icon={<LinkOutlined />}
+          >
+            Gestionar Schemas
+          </Button>
+          <Button
+            type="default"
+            size="small"
+            style={{ borderColor: '#52c41a', color: '#52c41a' }}
+            onClick={() => handleExportarConsolidado(record)}
+            icon={<FileExcelOutlined />}
+            disabled={parseInt(record.total_schemas) === 0}
+          >
+            Exportar Excel
+          </Button>
+        </Space>
       )
     }
   ];
@@ -303,20 +362,31 @@ const MunicipiosManager = () => {
         {selectedMunicipio && (
           <>
             <Card size="small" style={{ marginBottom: '16px' }}>
-              <Row gutter={16}>
-                <Col span={12}>
+              <Row gutter={16} align="middle">
+                <Col span={8}>
                   <Statistic
                     title="Municipio"
                     value={selectedMunicipio.nombre}
                     prefix={<EnvironmentOutlined />}
                   />
                 </Col>
-                <Col span={12}>
+                <Col span={8}>
                   <Statistic
                     title="Código DANE"
                     value={selectedMunicipio.codigo_dane}
                     prefix={<Text code />}
                   />
+                </Col>
+                <Col span={8} style={{ textAlign: 'right' }}>
+                  <Button
+                    type="primary"
+                    style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }}
+                    onClick={() => handleExportarConsolidado(selectedMunicipio)}
+                    icon={<FileExcelOutlined />}
+                    disabled={parseInt(selectedMunicipio.total_schemas) === 0}
+                  >
+                    Exportar Excel Consolidado
+                  </Button>
                 </Col>
               </Row>
             </Card>

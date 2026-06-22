@@ -34,7 +34,8 @@ class MunicipiosController {
       const sqlQuery = `
         SELECT 
           m.*,
-          COUNT(ms.id) as total_schemas
+          COUNT(ms.id) as total_schemas,
+          MAX(ms.schema_name) as schema_name
         FROM municipios m
         LEFT JOIN municipio_schemas ms ON m.id = ms.municipio_id AND ms.activo = true
         ${whereClause}
@@ -452,6 +453,158 @@ class MunicipiosController {
 
     } catch (error) {
       console.error('Error importando municipios:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Error interno del servidor',
+        message: error.message
+      });
+    }
+  }
+
+  // Exportar consolidado catastral del municipio en un archivo Excel (Multi-hoja)
+  async exportarConsolidado(req, res) {
+    try {
+      const { id } = req.params;
+      const ExcelJS = require('exceljs');
+      const consultaAlfanumericoService = require('../services/consultaAlfanumericoService');
+
+      // 1. Obtener información del municipio
+      const muniResult = await query(
+        'SELECT nombre, departamento FROM municipios WHERE id = $1',
+        [id]
+      );
+      if (muniResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Municipio no encontrado'
+        });
+      }
+      const municipio = muniResult.rows[0];
+
+      // 2. Obtener esquemas activos para este municipio
+      const schemasResult = await query(
+        'SELECT schema_name FROM municipio_schemas WHERE municipio_id = $1 AND activo = true',
+        [id]
+      );
+
+      if (schemasResult.rows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'No hay esquemas activos asociados',
+          message: `El municipio ${municipio.nombre} no tiene esquemas XTF activos asociados`
+        });
+      }
+
+      const activeSchemas = schemasResult.rows.map(r => r.schema_name);
+      console.log(`📊 Exportando consolidado para ${municipio.nombre}. Esquemas activos:`, activeSchemas);
+
+      // 3. Definir las hojas y sus respectivas consultas
+      const worksheetsDef = [
+        { name: 'Fichas', method: 'consultarFichas' },
+        { name: 'Propietarios', method: 'consultarPropietarios' },
+        { name: 'Construcciones', method: 'consultarConstrucciones' },
+        { name: 'Calificaciones Resumen', method: 'consultarCalificacionesConstrucciones' },
+        { name: 'Calificaciones Detalle', method: 'consultarCalificacionesDetalle' },
+        { name: 'Construcciones Generales', method: 'consultarConstruccionesGenerales' },
+        { name: 'Colindantes', method: 'consultarColindantes' },
+        { name: 'Cartografía', method: 'consultarCartografia' }
+      ];
+
+      // Inicializar el libro de Excel
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'GPCONES';
+      workbook.created = new Date();
+
+      // 4. Cargar y consolidar datos para cada hoja
+      for (const def of worksheetsDef) {
+        let consolidatedData = [];
+
+        for (const schemaName of activeSchemas) {
+          try {
+            // Llamar al servicio correspondiente (con un límite alto para consolidación)
+            const result = await consultaAlfanumericoService[def.method](schemaName, { limit: 100000 });
+            if (result && result.success && result.data && result.data.length > 0) {
+              // Añadir la columna de esquema a cada registro
+              const mappedData = result.data.map(item => ({
+                'Esquema XTF': schemaName,
+                ...item
+              }));
+              consolidatedData = consolidatedData.concat(mappedData);
+            }
+          } catch (queryErr) {
+            console.error(`Error consultando ${def.name} en schema ${schemaName}:`, queryErr.message);
+            // Continuar con los demás esquemas/consultas para no abortar todo el reporte
+          }
+        }
+
+        // 5. Crear la hoja y escribir los datos
+        const worksheet = workbook.addWorksheet(def.name);
+        
+        if (consolidatedData.length === 0) {
+          worksheet.addRow(['No se encontraron registros para esta consulta en los esquemas activos del municipio.']);
+          continue;
+        }
+
+        // Obtener las llaves (columnas) dinámicamente desde el primer elemento
+        const keys = Object.keys(consolidatedData[0]);
+
+        // Configurar las columnas de Excel
+        worksheet.columns = keys.map(k => ({
+          header: k,
+          key: k,
+          width: Math.max(k.length + 5, 12)
+        }));
+
+        // Escribir los registros
+        consolidatedData.forEach(item => {
+          const rowValue = {};
+          keys.forEach(k => {
+            const val = item[k];
+            if (val !== null && typeof val === 'object') {
+              rowValue[k] = JSON.stringify(val);
+            } else {
+              rowValue[k] = val;
+            }
+          });
+          worksheet.addRow(rowValue);
+        });
+
+        // Configurar estilos básicos para los encabezados
+        const headerRow = worksheet.getRow(1);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        headerRow.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF1F497D' } // Azul corporativo
+        };
+        headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+        headerRow.height = 24;
+
+        // Auto-ajustar el ancho de las columnas según su contenido
+        worksheet.columns.forEach(column => {
+          let maxLen = column.header.length;
+          worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+            if (rowNumber > 1) {
+              const val = row.getCell(column.key).value;
+              if (val) {
+                maxLen = Math.max(maxLen, val.toString().length);
+              }
+            }
+          });
+          column.width = Math.min(maxLen + 4, 50); // Límite de ancho para que no se extienda demasiado
+        });
+      }
+
+      // 6. Configurar cabeceras de respuesta y transmitir el archivo
+      const fileName = `consolidado_${municipio.nombre.toLowerCase().replace(/[^a-z0-9]/g, '_')}.xlsx`;
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+      await workbook.xlsx.write(res);
+      res.end();
+
+    } catch (error) {
+      console.error('Error generando consolidado Excel:', error);
       res.status(500).json({
         success: false,
         error: 'Error interno del servidor',

@@ -6,7 +6,7 @@ const pool = new Pool({
   port: process.env.DB_PORT || 5432,
   database: process.env.DB_NAME || 'GP_CONES',
   user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || '12345',
+  password: process.env.DB_PASSWORD || 'admin1',
   max: 20, // máximo número de clientes en el pool
   idleTimeoutMillis: 30000, // tiempo máximo que un cliente puede estar inactivo
   connectionTimeoutMillis: 2000, // tiempo máximo para establecer conexión

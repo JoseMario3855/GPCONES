@@ -14,7 +14,7 @@ import Layout from './components/layout/Layout';
 // Componentes de páginas
 import Dashboard from './components/dashboard/Dashboard';
 import Predios from './components/predios/Predios';
-// import PredioForm from './components/predios/PredioForm';
+import PredioForm from './components/predios/PredioForm';
 // import PredioDetail from './components/predios/PredioDetail';
 import Users from './components/users/Users';
 // import Profile from './components/auth/Profile';
@@ -23,11 +23,15 @@ import AuditLogs from './components/audit/AuditLogs';
 // Componentes de carga de archivos
 import XTFUpload from './components/xtf/XTFUpload';
 import XTFValidation from './components/xtf/XTFValidation';
+import IGACExcelImport from './components/xtf/IGACExcelImport';
+import ExcelToXTFConverter from './components/xtf/ExcelToXTFConverter';
 import ILIManager from './components/ili/ILIManager';
 import SchemaExplorer from './components/ili/SchemaExplorer';
 import MunicipiosManager from './components/municipios/MunicipiosManager';
 import MunicipioSelector from './components/municipios/MunicipioSelector';
 import ConsultaAlfanumerico from './components/consultaAlfanumerico/ConsultaAlfanumerico';
+import CatalogosManager from './components/catalogos/CatalogosManager';
+import RevisionCatastral from './components/predios/RevisionCatastral';
 
 // Componente de ruta protegida
 const ProtectedRoute = ({ children }) => {
@@ -87,9 +91,10 @@ function App() {
           
           {/* Gestión de Predios */}
           <Route path="predios" element={<Predios />} />
-          {/* <Route path="predios/nuevo" element={<PredioForm />} /> */}
+          <Route path="predios/revision" element={<RevisionCatastral />} />
+          <Route path="predios/nuevo" element={<PredioForm />} />
           {/* <Route path="predios/:id" element={<PredioDetail />} /> */}
-          {/* <Route path="predios/:id/editar" element={<PredioForm />} /> */}
+          <Route path="predios/:id/editar" element={<PredioForm />} />
           
           {/* Gestión de Usuarios */}
           <Route path="users" element={<Users />} />
@@ -103,6 +108,8 @@ function App() {
                                 {/* Carga de Archivos XTF */}
                       <Route path="xtf/upload" element={<XTFUpload />} />
                       <Route path="xtf/validation" element={<XTFValidation />} />
+                      <Route path="xtf/import-excel" element={<IGACExcelImport />} />
+                      <Route path="xtf/excel-to-xtf" element={<ExcelToXTFConverter />} />
                       
                       {/* Gestión ILI/XTF */}
                       <Route path="ili" element={<ILIManager />} />
@@ -116,6 +123,9 @@ function App() {
                       
                       {/* Consulta Alfanumérica */}
                       <Route path="consulta-alfanumerico" element={<ConsultaAlfanumerico />} />
+                      
+                      {/* Administración de Catálogos */}
+                      <Route path="catalogos" element={<CatalogosManager />} />
           
           {/* Ruta por defecto */}
           <Route path="*" element={<Navigate to="/" replace />} />

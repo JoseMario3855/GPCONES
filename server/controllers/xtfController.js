@@ -2,6 +2,7 @@ const db = require('../config/database');
 const { logAuditEvent } = require('./auditController');
 const iliService = require('../services/iliService');
 const xtfIntegrationService = require('../services/xtfIntegrationService');
+const igacExcelImporterService = require('../services/igacExcelImporterService');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
@@ -38,7 +39,7 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB
+    fileSize: 500 * 1024 * 1024, // 500MB
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['.xtf', '.xml'];
@@ -51,6 +52,37 @@ const upload = multer({
   }
 });
 
+// Configuración de multer para archivos Excel de IGAC
+const storageExcel = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(__dirname, '../uploads/excel');
+    fs.mkdir(uploadDir, { recursive: true })
+      .then(() => cb(null, uploadDir))
+      .catch(err => cb(err));
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, `igac-excel-${uniqueSuffix}${path.extname(file.originalname)}`);
+  }
+});
+
+const uploadExcel = multer({
+  storage: storageExcel,
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['.xlsx', '.xls'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedTypes.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo se permiten archivos Excel (.xlsx, .xls)'));
+    }
+  }
+});
+
+
 // Historia 5: Carga de XTF
 const uploadXTF = async (req, res) => {
   let uploadId = null;
@@ -62,17 +94,52 @@ const uploadXTF = async (req, res) => {
       });
     }
 
-    const { model_type = 'antioquia', schema_name } = req.body;
+    let { model_type, schema_name } = req.body;
     const { query } = db;
     const filePath = req.file.path;
     const fileName = req.file.originalname;
     const fileSize = req.file.size;
 
+    // Normalizar y auto-detectar/sobrescribir model_type desde el contenido del archivo
+    try {
+      const xmlContent = await fs.readFile(filePath, 'utf8');
+      let detected = null;
+      if (xmlContent.includes('Modelo_Aplicacion_Interno_Levantamiento_Catastral_LADMCOL_V1_0')) {
+        detected = 'modelo-interno';
+      } else if (xmlContent.includes('LADM_COL_ExtAntioquia') || xmlContent.includes('LADM_COL_Antioquia')) {
+        detected = 'antioquia';
+      } else if (xmlContent.includes('LADM_COL_IGAC')) {
+        detected = 'igac';
+      } else if (xmlContent.includes('LADM_COL')) {
+        detected = 'ladm-col';
+      }
+
+      if (detected) {
+        console.log(`[AUTO-DETECT] Modelo detectado desde XTF (${fileName}): ${detected} (se sobreescribe el recibido: ${model_type})`);
+        model_type = detected;
+      }
+    } catch (detectErr) {
+      console.warn('[AUTO-DETECT] Error detectando modelo:', detectErr.message);
+    }
+
+    if (!model_type || model_type === 'undefined' || model_type === 'null') {
+      model_type = 'antioquia';
+    }
+
     // Generar nombre de schema si no se proporciona
     const finalSchemaName = schema_name || `xtf_${Date.now()}`;
 
     // Registrar archivo en xtf_files con estado inicial
-    const xtfType = model_type === 'antioquia' ? 'Antioquia Extendido' : 'IGAC 1.0';
+    let xtfType = 'IGAC 1.0';
+    let modelVersion = '2.0';
+    if (model_type === 'antioquia') {
+      xtfType = 'Antioquia Extendido';
+      modelVersion = '2.0';
+    } else if (model_type === 'modelo-interno') {
+      xtfType = 'Modelo Interno V 1.0.1';
+      modelVersion = '1.0.1';
+    }
+
     const uploadRecord = await query(`
       INSERT INTO xtf_files (
         filename, original_filename, file_size, file_path, 
@@ -85,7 +152,7 @@ const uploadXTF = async (req, res) => {
       fileSize,
       filePath,
       xtfType,
-      '2.0',
+      modelVersion,
       'Validando',
       req.user.id
     ]);
@@ -280,9 +347,35 @@ const validateXTF = async (req, res) => {
       });
     }
 
-    const { model_type = 'antioquia' } = req.body;
+    let { model_type } = req.body;
     const filePath = req.file.path;
     const fileName = req.file.originalname;
+
+    // Normalizar y auto-detectar/sobrescribir model_type desde el contenido del archivo
+    try {
+      const xmlContent = await fs.readFile(filePath, 'utf8');
+      let detected = null;
+      if (xmlContent.includes('Modelo_Aplicacion_Interno_Levantamiento_Catastral_LADMCOL_V1_0')) {
+        detected = 'modelo-interno';
+      } else if (xmlContent.includes('LADM_COL_ExtAntioquia') || xmlContent.includes('LADM_COL_Antioquia')) {
+        detected = 'antioquia';
+      } else if (xmlContent.includes('LADM_COL_IGAC')) {
+        detected = 'igac';
+      } else if (xmlContent.includes('LADM_COL')) {
+        detected = 'ladm-col';
+      }
+
+      if (detected) {
+        console.log(`[AUTO-DETECT] Modelo detectado desde XTF (${fileName}): ${detected} (se sobreescribe el recibido: ${model_type})`);
+        model_type = detected;
+      }
+    } catch (detectErr) {
+      console.warn('[AUTO-DETECT] Error detectando modelo:', detectErr.message);
+    }
+
+    if (!model_type || model_type === 'undefined' || model_type === 'null') {
+      model_type = 'antioquia';
+    }
 
     console.log(`Iniciando validación XTF: ${fileName}, modelo: ${model_type}`);
 
@@ -877,8 +970,7 @@ module.exports = {
       const result = await query(`
         SELECT 
           schema_name,
-          schema_owner,
-          created_at
+          schema_owner
         FROM information_schema.schemata 
         WHERE schema_name LIKE 'xtf_%' OR schema_name LIKE 'ili_%'
         ORDER BY schema_name DESC
@@ -1048,6 +1140,17 @@ module.exports = {
 
       // Eliminar schema (CASCADE para eliminar todas las tablas)
       await query(`DROP SCHEMA IF EXISTS "${schema_name}" CASCADE`);
+
+      // Desasociar del municipio en municipio_schemas
+      try {
+        await query(`
+          UPDATE municipio_schemas 
+          SET activo = false, updated_at = CURRENT_TIMESTAMP
+          WHERE schema_name = $1
+        `, [schema_name]);
+      } catch (assocError) {
+        console.warn('Error desasociando schema del municipio:', assocError.message);
+      }
 
       // Log de auditoría
       await logAuditEvent(req.user.id, 'ELIMINACION_SCHEMA', 'XTF', {
@@ -1348,5 +1451,275 @@ module.exports = {
         error: error.message
       });
     }
-  }
+  },
+
+  // Importar archivo Excel de IGAC R1/R2 y poblar el esquema catastral
+  importExcel: async (req, res) => {
+    let uploadId = null;
+    let schemaName = null;
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'No se proporcionó el archivo Excel'
+        });
+      }
+
+      const { municipio_id } = req.body;
+      if (!municipio_id) {
+        return res.status(400).json({
+          success: false,
+          message: 'El municipio_id es obligatorio'
+        });
+      }
+
+      const { query } = db;
+      const filePath = req.file.path;
+      const fileName = req.file.originalname;
+      const fileSize = req.file.size;
+
+      // Generar nombre único para el schema de importación Excel
+      schemaName = `excel_${municipio_id}_${Date.now()}`;
+
+      console.log(`[EXCEL IMPORT] Archivo: ${fileName}, Tamaño: ${fileSize}, Municipio: ${municipio_id}, Esquema: ${schemaName}`);
+
+      // Log de inicio de importación en auditoría
+      await logAuditEvent(req.user.id, 'IMPORT_EXCEL_INICIO', 'XTF', {
+        filename: fileName,
+        file_size: fileSize,
+        schema_name: schemaName,
+        municipio_id: municipio_id
+      });
+
+      // Crear esquema LADM-COL usando el Modelo Interno
+      const schemaResult = await iliService.createSchemaFromModel('modelo-interno', schemaName);
+      if (!schemaResult.success) {
+        throw new Error(`Error creando esquema catastral: ${schemaResult.error || 'error desconocido'}`);
+      }
+
+      // Procesar e importar el Excel usando el importador de IGAC
+      const importResult = await igacExcelImporterService.importExcel(filePath, schemaName);
+
+      // Registrar archivo en la tabla de control xtf_files con estado Procesado
+      const uploadRecord = await query(`
+        INSERT INTO xtf_files (
+          filename, original_filename, file_size, file_path, 
+          xtf_type, model_version, status, uploaded_by,
+          records_processed, records_imported, records_errors,
+          schema_name, processed_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, $11, CURRENT_TIMESTAMP)
+        RETURNING id
+      `, [
+        path.basename(filePath),
+        fileName,
+        fileSize,
+        filePath,
+        'Modelo Interno V 1.0.1',
+        '1.0.1',
+        'Procesado',
+        req.user.id,
+        importResult.totalImported,
+        importResult.totalImported,
+        schemaName
+      ]);
+
+      uploadId = uploadRecord.rows[0].id;
+
+      // Asociar esquema con el municipio
+      await query(`
+        INSERT INTO municipio_schemas (municipio_id, schema_name, descripcion, created_by, activo)
+        VALUES ($1, $2, $3, $4, true)
+        ON CONFLICT (municipio_id, schema_name) 
+        DO UPDATE SET 
+          activo = true,
+          updated_at = CURRENT_TIMESTAMP
+      `, [municipio_id, schemaName, 'Importado desde Excel IGAC R1/R2', req.user?.id || null]);
+
+      // Integrar datos catastrales al esquema principal
+      const integrationResult = await xtfIntegrationService.integrateXTFToMainSchema(schemaName, {
+        userId: req.user.id,
+        filename: fileName,
+        model_type: 'modelo-interno'
+      });
+
+      // Log de éxito en auditoría
+      await logAuditEvent(req.user.id, 'IMPORT_EXCEL_EXITOSA', 'XTF', {
+        filename: fileName,
+        schema_name: schemaName,
+        municipio_id: municipio_id,
+        total_imported: importResult.totalImported,
+        integration_success: integrationResult.success,
+        upload_id: uploadId
+      });
+
+      res.json({
+        success: true,
+        message: 'Archivo Excel de IGAC importado e integrado exitosamente',
+        data: {
+          upload_id: uploadId,
+          filename: fileName,
+          schema_name: schemaName,
+          entities_imported: importResult.totalImported,
+          integration: {
+            success: integrationResult.success,
+            total_imported: integrationResult.total_imported,
+            predios: integrationResult.integration?.predios?.imported || 0,
+            terrenos: integrationResult.integration?.terrenos?.imported || 0,
+            construcciones: integrationResult.integration?.construcciones?.imported || 0
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('Error en importExcel controller:', error);
+      
+      // Log de error en auditoría
+      await logAuditEvent(req.user.id, 'ERROR_IMPORT_EXCEL', 'XTF', {
+        filename: req.file?.originalname,
+        error: error.message,
+        schema_name: schemaName
+      });
+
+      // Si falla y se alcanzó a crear el esquema, eliminarlo para limpiar la BD
+      if (schemaName) {
+        try {
+          await query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+          console.log(`[EXCEL IMPORT CLEANUP] Esquema ${schemaName} eliminado tras error`);
+        } catch (cleanErr) {
+          console.error(`[EXCEL IMPORT CLEANUP] Error al eliminar esquema ${schemaName}:`, cleanErr.message);
+        }
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor al importar el archivo Excel',
+        error: error.message
+      });
+    }
+  },
+
+  // Convertir Excel consolidado de IGAC a formato XTF LADM-COL
+  excelToXTF: async (req, res) => {
+    let schemaName = null;
+    let excelFilePath = null;
+    let xtfOutputPath = null;
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'No se proporcionó el archivo Excel'
+        });
+      }
+
+      excelFilePath = req.file.path;
+      const fileName = req.file.originalname;
+      const baseNameWithoutExt = path.parse(fileName).name;
+
+      // Generar nombre de esquema temporal único
+      schemaName = `tmp_to_xtf_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+      console.log(`[EXCEL TO XTF] Iniciando conversión de ${fileName}. Esquema temporal: ${schemaName}`);
+
+      // Log de inicio en auditoría
+      await logAuditEvent(req.user.id, 'CONVERSION_EXCEL_XTF_INICIO', 'XTF', {
+        filename: fileName,
+        schema_name: schemaName
+      });
+
+      // 1. Crear esquema catastral temporal usando el Modelo Interno
+      const schemaResult = await iliService.createSchemaFromModel('modelo-interno', schemaName);
+      if (!schemaResult.success) {
+        throw new Error(`Error creando esquema catastral temporal: ${schemaResult.error || 'error desconocido'}`);
+      }
+
+      // 2. Procesar e importar el archivo Excel en el esquema temporal
+      const importResult = await igacExcelImporterService.importExcel(excelFilePath, schemaName);
+
+      // 3. Asegurar que exista el directorio de exportación
+      const exportDir = path.join(__dirname, '../uploads/exports');
+      await fs.mkdir(exportDir, { recursive: true });
+
+      // 4. Generar archivo XTF con ili2pg desde el esquema temporal
+      const timestamp = Date.now();
+      const outputFileName = `${baseNameWithoutExt}_export_${timestamp}.xtf`;
+      xtfOutputPath = path.join(exportDir, outputFileName);
+
+      const exportOptions = {
+        dataset: `excel_dataset_${schemaName}`,
+        basket: null
+      };
+
+      const exportResult = await iliService.exportPostgreSQLToXTF(
+        'modelo-interno',
+        schemaName,
+        xtfOutputPath,
+        exportOptions
+      );
+
+      // Log de éxito en auditoría
+      await logAuditEvent(req.user.id, 'CONVERSION_EXCEL_XTF_EXITOSA', 'XTF', {
+        filename: fileName,
+        output_filename: outputFileName,
+        schema_name: schemaName,
+        total_imported: importResult.totalImported,
+        file_size: exportResult.fileSize
+      });
+
+      // 5. Leer y enviar el archivo generado
+      res.setHeader('Content-Type', 'application/xml');
+      res.setHeader('Content-Disposition', `attachment; filename="${outputFileName}"`);
+      
+      const fileContent = await fs.readFile(xtfOutputPath);
+      res.send(fileContent);
+
+    } catch (error) {
+      console.error('Error en excelToXTF controller:', error);
+      
+      // Log de error en auditoría
+      await logAuditEvent(req.user.id, 'ERROR_CONVERSION_EXCEL_XTF', 'XTF', {
+        filename: req.file?.originalname,
+        error: error.message,
+        schema_name: schemaName
+      });
+
+      res.status(500).json({
+        success: false,
+        message: 'Error interno del servidor al convertir el archivo Excel a XTF',
+        error: error.message
+      });
+    } finally {
+      // Limpieza de recursos: esquema de base de datos
+      if (schemaName) {
+        try {
+          const { query } = db;
+          await query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+          console.log(`[EXCEL TO XTF CLEANUP] Esquema temporal ${schemaName} eliminado`);
+        } catch (cleanErr) {
+          console.error(`[EXCEL TO XTF CLEANUP] Error al eliminar esquema temporal ${schemaName}:`, cleanErr.message);
+        }
+      }
+
+      // Limpieza de recursos: archivo Excel temporal
+      if (excelFilePath) {
+        try {
+          await fs.unlink(excelFilePath);
+          console.log(`[EXCEL TO XTF CLEANUP] Archivo Excel temporal eliminado: ${excelFilePath}`);
+        } catch (unlinkErr) {
+          console.error(`[EXCEL TO XTF CLEANUP] Error eliminando Excel temporal:`, unlinkErr.message);
+        }
+      }
+
+      // Limpieza de recursos: archivo XTF temporal
+      if (xtfOutputPath) {
+        try {
+          await fs.unlink(xtfOutputPath);
+          console.log(`[EXCEL TO XTF CLEANUP] Archivo XTF temporal eliminado: ${xtfOutputPath}`);
+        } catch (unlinkErr) {
+          console.error(`[EXCEL TO XTF CLEANUP] Error eliminando XTF temporal:`, unlinkErr.message);
+        }
+      }
+    }
+  },
+
+  uploadExcel
 };

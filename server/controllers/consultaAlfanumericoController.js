@@ -22,6 +22,8 @@ class ConsultaAlfanumericoController {
         npn: req.query.npn,
         municipio: req.query.municipio,
         matriculaInmobiliaria: req.query.matriculaInmobiliaria,
+        documento: req.query.documento,
+        predio_id: req.query.predio_id || req.query.predioId,
         limit: req.query.limit ? parseInt(req.query.limit) : 1000,
         offset: req.query.offset ? parseInt(req.query.offset) : 0
       };
@@ -64,8 +66,17 @@ class ConsultaAlfanumericoController {
       const filters = {
         nroFicha: req.query.nroFicha,
         npn: req.query.npn,
-        documento: req.query.documento
+        matriculaInmobiliaria: req.query.matriculaInmobiliaria,
+        documento: req.query.documento,
+        predio_id: req.query.predio_id || req.query.predioId
       };
+
+      // Limpiar filtros undefined
+      Object.keys(filters).forEach(key => {
+        if (filters[key] === undefined || filters[key] === null || filters[key] === '') {
+          delete filters[key];
+        }
+      });
 
       const result = await consultaAlfanumericoService.consultarPropietarios(schema_name, filters);
 
@@ -98,9 +109,19 @@ class ConsultaAlfanumericoController {
       const filters = {
         nroFicha: req.query.nroFicha,
         npn: req.query.npn,
+        matriculaInmobiliaria: req.query.matriculaInmobiliaria,
+        documento: req.query.documento,
+        predio_id: req.query.predio_id || req.query.predioId,
         limit: req.query.limit ? parseInt(req.query.limit) : 1000,
         offset: req.query.offset ? parseInt(req.query.offset) : 0
       };
+
+      // Limpiar filtros undefined
+      Object.keys(filters).forEach(key => {
+        if (filters[key] === undefined || filters[key] === null || filters[key] === '') {
+          delete filters[key];
+        }
+      });
 
       const result = await consultaAlfanumericoService.consultarConstrucciones(schema_name, filters);
 
@@ -133,9 +154,18 @@ class ConsultaAlfanumericoController {
       const filters = {
         nroFicha: req.query.nroFicha,
         npn: req.query.npn,
+        matriculaInmobiliaria: req.query.matriculaInmobiliaria,
+        documento: req.query.documento,
         limit: req.query.limit ? parseInt(req.query.limit) : 1000,
         offset: req.query.offset ? parseInt(req.query.offset) : 0
       };
+
+      // Limpiar filtros undefined
+      Object.keys(filters).forEach(key => {
+        if (filters[key] === undefined || filters[key] === null || filters[key] === '') {
+          delete filters[key];
+        }
+      });
 
       const result = await consultaAlfanumericoService.consultarCalificacionesConstrucciones(schema_name, filters);
 
@@ -149,6 +179,51 @@ class ConsultaAlfanumericoController {
       });
     }
   }
+
+  /**
+   * Consultar CalificacionesDetalle
+   * GET /api/consulta-alfanumerico/calificaciones-detalle
+   */
+  async consultarCalificacionesDetalle(req, res) {
+    try {
+      const { schema_name } = req.query;
+      
+      if (!schema_name) {
+        return res.status(400).json({
+          success: false,
+          error: 'Schema requerido'
+        });
+      }
+
+      const filters = {
+        nroFicha: req.query.nroFicha,
+        npn: req.query.npn,
+        matriculaInmobiliaria: req.query.matriculaInmobiliaria,
+        documento: req.query.documento,
+        limit: req.query.limit ? parseInt(req.query.limit) : 1000,
+        offset: req.query.offset ? parseInt(req.query.offset) : 0
+      };
+
+      // Limpiar filtros vacíos
+      Object.keys(filters).forEach(key => {
+        if (filters[key] === undefined || filters[key] === null || filters[key] === '') {
+          delete filters[key];
+        }
+      });
+
+      const result = await consultaAlfanumericoService.consultarCalificacionesDetalle(schema_name, filters);
+
+      res.json(result);
+    } catch (error) {
+      console.error('Error en consultarCalificacionesDetalle:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Error interno del servidor',
+        message: error.message
+      });
+    }
+  }
+
 
   /**
    * Consultar ConstruccionesGenerales
@@ -167,9 +242,19 @@ class ConsultaAlfanumericoController {
 
       const filters = {
         nroFicha: req.query.nroFicha,
+        npn: req.query.npn,
+        matriculaInmobiliaria: req.query.matriculaInmobiliaria,
+        documento: req.query.documento,
         limit: req.query.limit ? parseInt(req.query.limit) : 1000,
         offset: req.query.offset ? parseInt(req.query.offset) : 0
       };
+
+      // Limpiar filtros vacíos
+      Object.keys(filters).forEach(key => {
+        if (filters[key] === undefined || filters[key] === null || filters[key] === '') {
+          delete filters[key];
+        }
+      });
 
       const result = await consultaAlfanumericoService.consultarConstruccionesGenerales(schema_name, filters);
 
@@ -201,9 +286,19 @@ class ConsultaAlfanumericoController {
 
       const filters = {
         nroFicha: req.query.nroFicha,
+        npn: req.query.npn,
+        matriculaInmobiliaria: req.query.matriculaInmobiliaria,
+        documento: req.query.documento,
         limit: req.query.limit ? parseInt(req.query.limit) : 1000,
         offset: req.query.offset ? parseInt(req.query.offset) : 0
       };
+
+      // Limpiar filtros vacíos
+      Object.keys(filters).forEach(key => {
+        if (filters[key] === undefined || filters[key] === null || filters[key] === '') {
+          delete filters[key];
+        }
+      });
 
       const result = await consultaAlfanumericoService.consultarColindantes(schema_name, filters);
 
@@ -235,9 +330,19 @@ class ConsultaAlfanumericoController {
 
       const filters = {
         nroFicha: req.query.nroFicha,
+        npn: req.query.npn,
+        matriculaInmobiliaria: req.query.matriculaInmobiliaria,
+        documento: req.query.documento,
         limit: req.query.limit ? parseInt(req.query.limit) : 1000,
         offset: req.query.offset ? parseInt(req.query.offset) : 0
       };
+
+      // Limpiar filtros vacíos
+      Object.keys(filters).forEach(key => {
+        if (filters[key] === undefined || filters[key] === null || filters[key] === '') {
+          delete filters[key];
+        }
+      });
 
       const result = await consultaAlfanumericoService.consultarCartografia(schema_name, filters);
 

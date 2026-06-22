@@ -1,51 +1,90 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  Form,
-  Input,
-  Select,
-  InputNumber,
-  Button,
-  Card,
-  Row,
-  Col,
-  Typography,
-  Divider,
-  message,
-  Space,
-  Alert,
-  Steps,
-  Upload,
-  Modal
-} from 'antd';
-import {
-  SaveOutlined,
-  EnvironmentOutlined,
-  UserOutlined,
-  HomeOutlined,
-  FileTextOutlined,
-  ArrowLeftOutlined,
-  PlusOutlined,
-  InfoCircleOutlined
-} from '@ant-design/icons';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { message } from 'antd';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
 
-const { Title, Text } = Typography;
-const { Option } = Select;
-const { TextArea } = Input;
-const { Step } = Steps;
+const inputStyle = {
+  width: '100%',
+  padding: '9px 12px',
+  background: '#fff',
+  border: '1px solid #e8e4dc',
+  borderRadius: 6,
+  fontSize: 13,
+  color: '#1a1a18',
+  boxSizing: 'border-box',
+  outline: 'none',
+  transition: 'border-color 0.15s',
+};
 
-const PredioForm = ({ predioId = null, onSuccess = null }) => {
-  const { user, canManagePredios } = useAuth();
+const labelStyle = {
+  display: 'block',
+  fontSize: 11,
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  color: '#6a6860',
+  marginBottom: 5,
+  letterSpacing: '0.05em',
+};
+
+const fieldGroupStyle = {
+  display: 'flex',
+  gap: 12,
+  marginBottom: 14,
+};
+
+const sectionStyle = {
+  background: '#fff',
+  border: '1px solid #e8e4dc',
+  borderRadius: 10,
+  padding: '18px 20px',
+  marginBottom: 16,
+};
+
+const sectionTitleStyle = {
+  fontSize: 12,
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: '#8a8880',
+  marginBottom: 14,
+  paddingBottom: 8,
+  borderBottom: '1px solid #f0ede6',
+};
+
+const PredioForm = ({ predioId: propPredioId = null, schema: propSchema = null, onSuccess = null }) => {
+  const { id: urlPredioId } = useParams();
+  const predioId = propPredioId || urlPredioId;
+  const { canManagePredios } = useAuth();
   const navigate = useNavigate();
-  const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [geometry, setGeometry] = useState(null);
-  const [mapModalVisible, setMapModalVisible] = useState(false);
+  const location = useLocation();
+  const schemaParams = new URLSearchParams(location.search);
+  const [schemaName, setSchemaName] = useState(propSchema || schemaParams.get('schema'));
 
-  // Verificar permisos
+  const [loading, setLoading] = useState(false);
+  const [municipiosList, setMunicipiosList] = useState([]);
+  const [typeOptions, setTypeOptions] = useState(null);
+
+  const [form, setForm] = useState({
+    // Identificación
+    numero_predial_nacional: '',
+    matricula_inmobiliaria: '',
+    espacio_de_nombres: '',
+    nombre: '',
+    // Ubicación
+    departamento: '',
+    municipio: '',
+    codigo_orip: '',
+    // Clasificación
+    condicion_predio: '',
+    tipo_predio: '',
+    uso_predio: '',
+    // Propietario inicial (opcional)
+    propietario_nombre: '',
+    propietario_documento: '',
+    propietario_tipo_documento: '',
+  });
+
   useEffect(() => {
     if (!canManagePredios) {
       message.error('No tienes permisos para gestionar predios');
@@ -53,510 +92,453 @@ const PredioForm = ({ predioId = null, onSuccess = null }) => {
     }
   }, [canManagePredios, navigate]);
 
-  // Cargar datos del predio si es edición
   useEffect(() => {
-    if (predioId) {
-      loadPredioData();
+    const init = async () => {
+      await Promise.all([loadMunicipios(), loadTypeOptions()]);
+      if (predioId) await loadPredioData();
+    };
+    init();
+  }, [predioId, schemaName]);
+
+  // Autoselección de municipio si hay solo uno en el schema
+  useEffect(() => {
+    if (!predioId && schemaName && municipiosList.length > 0) {
+      const filtered = municipiosList.filter(m => m.schema_name === schemaName);
+      if (filtered.length === 1) {
+        setForm(prev => ({ ...prev, municipio: filtered[0].nombre }));
+      }
     }
-  }, [predioId]);
+  }, [predioId, schemaName, municipiosList]);
+
+  const loadMunicipios = async () => {
+    try {
+      const res = await axios.get('/api/municipios?activo=true');
+      if (res.data.success) setMunicipiosList(res.data.data);
+    } catch (e) {
+      console.error('Error cargando municipios:', e);
+    }
+  };
+
+  const loadTypeOptions = async () => {
+    if (!schemaName) return;
+    try {
+      const res = await axios.get(`/api/predios/type-options?schema=${schemaName}`);
+      if (res.data.success) setTypeOptions(res.data.data);
+    } catch (e) {
+      console.error('Error cargando type-options:', e);
+    }
+  };
 
   const loadPredioData = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`/api/predios/${predioId}`);
-      if (response.data.success) {
-        const predio = response.data.data;
-        form.setFieldsValue({
-          npn: predio.npn,
-          municipio: predio.municipio,
-          zona: predio.zona,
-          sector: predio.sector,
-          numero_ficha: predio.numero_ficha,
-          area_hectareas: predio.area_hectareas,
-          tipo_predio: predio.tipo_predio,
-          uso_predio: predio.uso_predio,
-          propietario_nombre: predio.propietario_nombre,
-          propietario_documento: predio.propietario_documento,
-          propietario_tipo_documento: predio.propietario_tipo_documento,
-          observaciones: predio.observaciones
+      const schemaQuery = schemaName ? `?schema=${schemaName}` : '';
+      const res = await axios.get(`/api/predios/${predioId}${schemaQuery}`);
+      if (res.data.success) {
+        const p = res.data.data;
+        setForm({
+          numero_predial_nacional: p.npn || p.numero_predial_nacional || p.numero_predial || '',
+          matricula_inmobiliaria: p.matricula_inmobiliaria || p.matriculaInmobiliaria || '',
+          espacio_de_nombres: p.espacio_de_nombres || p.numeroFicha || '',
+          nombre: p.nombre || p.direccionNombre || '',
+          departamento: p.departamento || '',
+          municipio: p.municipio || p.municipio_nombre || '',
+          codigo_orip: p.codigo_orip || p.circulo || '',
+          condicion_predio: p.condicion_predio ? String(p.condicion_predio) : '',
+          tipo_predio: p.tipo_predio || (p.tipo ? String(p.tipo) : '') || '',
+          uso_predio: p.uso_predio || (p.destinacion_economica ? String(p.destinacion_economica) : '') || '',
+          propietario_nombre: p.propietario_nombre || '',
+          propietario_documento: p.propietario_documento || '',
+          propietario_tipo_documento: p.propietario_tipo_documento || '',
         });
-        setGeometry(predio.geometry);
       }
-    } catch (error) {
-      console.error('Error cargando predio:', error);
+    } catch (e) {
+      console.error('Error cargando predio:', e);
       message.error('Error cargando los datos del predio');
     } finally {
       setLoading(false);
     }
   };
 
-  const onFinish = async (values) => {
+  const handleMunicipioChange = (e) => {
+    const value = e.target.value;
+    setForm(prev => ({ ...prev, municipio: value }));
+    const selectedMuni = municipiosList.find(m => m.nombre === value);
+    if (selectedMuni?.schema_name) {
+      setSchemaName(selectedMuni.schema_name);
+    }
+  };
+
+  const handleChange = (field) => (e) => {
+    setForm(prev => ({ ...prev, [field]: e.target.value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!form.numero_predial_nacional || String(form.numero_predial_nacional).trim().length === 0) {
+      message.error('El NPN es obligatorio');
+      return;
+    }
+    if (!/^[0-9]{30}$/.test(String(form.numero_predial_nacional).trim())) {
+      message.error('El NPN debe ser exactamente 30 dígitos numéricos');
+      return;
+    }
+    if (!form.municipio || String(form.municipio).trim().length === 0) {
+      message.error('El municipio es obligatorio');
+      return;
+    }
+
     try {
       setLoading(true);
-
-      // Validar que se haya definido geometría
-      if (!geometry) {
-        message.error('Debe definir la geometría del predio');
-        setCurrentStep(2); // Ir al paso de geometría
-        return;
-      }
-
-      const predioData = {
-        ...values,
-        geometry: geometry
+      const schemaQuery = schemaName ? `?schema=${schemaName}` : '';
+      const payload = {
+        numero_predial_nacional: form.numero_predial_nacional.trim(),
+        npn: form.numero_predial_nacional.trim(),
+        matricula_inmobiliaria: form.matricula_inmobiliaria || null,
+        espacio_de_nombres: form.espacio_de_nombres || null,
+        nombre: form.nombre || null,
+        departamento: form.departamento || null,
+        municipio: form.municipio,
+        codigo_orip: form.codigo_orip || null,
+        condicion_predio: form.condicion_predio ? parseInt(form.condicion_predio, 10) : null,
+        tipo_predio: form.tipo_predio ? parseInt(form.tipo_predio, 10) : null,
+        uso_predio: form.uso_predio ? parseInt(form.uso_predio, 10) : null,
+        propietario_nombre: form.propietario_nombre || null,
+        propietario_documento: form.propietario_documento || null,
+        propietario_tipo_documento: form.propietario_tipo_documento || null,
       };
 
       let response;
       if (predioId) {
-        // Actualizar predio existente
-        response = await axios.put(`/api/predios/${predioId}`, predioData);
+        response = await axios.put(`/api/predios/${predioId}${schemaQuery}`, payload);
       } else {
-        // Crear nuevo predio
-        response = await axios.post('/api/predios', predioData);
+        response = await axios.post(`/api/predios${schemaQuery}`, payload);
       }
 
       if (response.data.success) {
-        message.success(
-          predioId 
-            ? 'Predio actualizado exitosamente' 
-            : 'Predio registrado exitosamente'
-        );
-        
+        message.success(predioId ? 'Predio actualizado exitosamente' : 'Predio registrado exitosamente');
         if (onSuccess) {
-          onSuccess(response.data.data);
+          onSuccess(response.data.data || response.data.predio);
         } else {
-          navigate('/predios');
+          const schemaParam = schemaName ? `?schema=${schemaName}` : '';
+          navigate(`/predios${schemaParam}`);
         }
       }
     } catch (error) {
       console.error('Error guardando predio:', error);
       if (error.response?.data?.error === 'NPN duplicado') {
-        message.error('El NPN ya existe en el sistema');
-        form.setFields([{
-          name: 'npn',
-          errors: ['Este NPN ya está registrado']
-        }]);
+        message.error('El NPN ya existe en este esquema');
       } else {
-        message.error(
-          error.response?.data?.message || 
-          'Error guardando el predio'
-        );
+        message.error(error.response?.data?.message || 'Error guardando el predio');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const steps = [
-    {
-      title: 'Datos Básicos',
-      description: 'Información catastral básica',
-      icon: <FileTextOutlined />
-    },
-    {
-      title: 'Información Física',
-      description: 'Características del predio',
-      icon: <HomeOutlined />
-    },
-    {
-      title: 'Propietario',
-      description: 'Datos del propietario',
-      icon: <UserOutlined />
-    },
-    {
-      title: 'Geometría',
-      description: 'Ubicación espacial',
-      icon: <EnvironmentOutlined />
-    }
-  ];
-
-  const nextStep = () => {
-    form.validateFields().then(() => {
-      setCurrentStep(currentStep + 1);
-    }).catch((errorInfo) => {
-      console.log('Validation failed:', errorInfo);
-    });
-  };
-
-  const prevStep = () => {
-    setCurrentStep(currentStep - 1);
-  };
-
-  const renderStepContent = () => {
-    switch (currentStep) {
-      case 0:
-        return (
-          <Row gutter={[16, 16]}>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="npn"
-                label="NPN (Número de Predio Nacional)"
-                rules={[
-                  { required: true, message: 'El NPN es obligatorio' },
-                  { min: 1, max: 50, message: 'El NPN debe tener entre 1 y 50 caracteres' }
-                ]}
-              >
-                <Input 
-                  placeholder="Ej: 12345-67890"
-                  prefix={<FileTextOutlined />}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="municipio"
-                label="Municipio"
-                rules={[
-                  { required: true, message: 'El municipio es obligatorio' },
-                  { min: 1, max: 100, message: 'El municipio debe tener entre 1 y 100 caracteres' }
-                ]}
-              >
-                <Select placeholder="Seleccione el municipio" showSearch>
-                  <Option value="Medellín">Medellín</Option>
-                  <Option value="Bello">Bello</Option>
-                  <Option value="Envigado">Envigado</Option>
-                  <Option value="Itagüí">Itagüí</Option>
-                  <Option value="Sabaneta">Sabaneta</Option>
-                  <Option value="La Estrella">La Estrella</Option>
-                  <Option value="Caldas">Caldas</Option>
-                  <Option value="Copacabana">Copacabana</Option>
-                  <Option value="Girardota">Girardota</Option>
-                  <Option value="Barbosa">Barbosa</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="zona"
-                label="Zona"
-                rules={[
-                  { max: 100, message: 'La zona no puede exceder 100 caracteres' }
-                ]}
-              >
-                <Input placeholder="Ej: Zona Norte, Zona Sur" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="sector"
-                label="Sector"
-                rules={[
-                  { max: 100, message: 'El sector no puede exceder 100 caracteres' }
-                ]}
-              >
-                <Input placeholder="Ej: Centro, Comercial, Residencial" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="numero_ficha"
-                label="Número de Ficha"
-                rules={[
-                  { max: 50, message: 'El número de ficha no puede exceder 50 caracteres' }
-                ]}
-              >
-                <Input placeholder="Ej: F-001-2024" />
-              </Form.Item>
-            </Col>
-          </Row>
-        );
-
-      case 1:
-        return (
-          <Row gutter={[16, 16]}>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="area_hectareas"
-                label="Área (Hectáreas)"
-                rules={[
-                  { type: 'number', min: 0, message: 'El área debe ser un número positivo' }
-                ]}
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  placeholder="0.0000"
-                  precision={4}
-                  min={0}
-                  step={0.0001}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="tipo_predio"
-                label="Tipo de Predio"
-                rules={[
-                  { required: true, message: 'El tipo de predio es obligatorio' }
-                ]}
-              >
-                <Select placeholder="Seleccione el tipo de predio">
-                  <Option value="URBANO">Urbano</Option>
-                  <Option value="RURAL">Rural</Option>
-                  <Option value="MIXTO">Mixto</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="uso_predio"
-                label="Uso del Predio"
-                rules={[
-                  { required: true, message: 'El uso del predio es obligatorio' }
-                ]}
-              >
-                <Select placeholder="Seleccione el uso del predio">
-                  <Option value="RESIDENCIAL">Residencial</Option>
-                  <Option value="COMERCIAL">Comercial</Option>
-                  <Option value="INDUSTRIAL">Industrial</Option>
-                  <Option value="AGRICOLA">Agrícola</Option>
-                  <Option value="PECUARIO">Pecuario</Option>
-                  <Option value="FORESTAL">Forestal</Option>
-                  <Option value="MINERO">Minero</Option>
-                  <Option value="ESPECIAL">Especial</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col xs={24}>
-              <Form.Item
-                name="observaciones"
-                label="Observaciones"
-              >
-                <TextArea
-                  rows={4}
-                  placeholder="Observaciones adicionales sobre el predio..."
-                  maxLength={500}
-                  showCount
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-        );
-
-      case 2:
-        return (
-          <Row gutter={[16, 16]}>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="propietario_nombre"
-                label="Nombre del Propietario"
-                rules={[
-                  { required: true, message: 'El nombre del propietario es obligatorio' },
-                  { max: 200, message: 'El nombre no puede exceder 200 caracteres' }
-                ]}
-              >
-                <Input 
-                  placeholder="Nombre completo del propietario"
-                  prefix={<UserOutlined />}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="propietario_tipo_documento"
-                label="Tipo de Documento"
-                rules={[
-                  { required: true, message: 'El tipo de documento es obligatorio' }
-                ]}
-              >
-                <Select placeholder="Seleccione el tipo de documento">
-                  <Option value="CC">Cédula de Ciudadanía</Option>
-                  <Option value="CE">Cédula de Extranjería</Option>
-                  <Option value="NIT">NIT</Option>
-                  <Option value="RUT">RUT</Option>
-                  <Option value="TI">Tarjeta de Identidad</Option>
-                  <Option value="RC">Registro Civil</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="propietario_documento"
-                label="Número de Documento"
-                rules={[
-                  { required: true, message: 'El número de documento es obligatorio' },
-                  { max: 20, message: 'El documento no puede exceder 20 caracteres' }
-                ]}
-              >
-                <Input placeholder="Número de documento del propietario" />
-              </Form.Item>
-            </Col>
-          </Row>
-        );
-
-      case 3:
-        return (
-          <div>
-            <Alert
-              message="Definición de Geometría"
-              description="Para completar el registro del predio, debe definir su geometría (ubicación espacial). Puede dibujar el polígono en el mapa o cargar un archivo GeoJSON."
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-            
-            <Row gutter={[16, 16]}>
-              <Col xs={24} md={12}>
-                <Card title="Dibujar en Mapa" size="small">
-                  <Button 
-                    type="primary" 
-                    icon={<EnvironmentOutlined />}
-                    onClick={() => setMapModalVisible(true)}
-                    style={{ width: '100%' }}
-                  >
-                    Abrir Mapa
-                  </Button>
-                </Card>
-              </Col>
-              <Col xs={24} md={12}>
-                <Card title="Cargar GeoJSON" size="small">
-                  <Upload
-                    accept=".json,.geojson"
-                    beforeUpload={(file) => {
-                      const reader = new FileReader();
-                      reader.onload = (e) => {
-                        try {
-                          const geoJson = JSON.parse(e.target.result);
-                          if (geoJson.type === 'Feature' || geoJson.type === 'FeatureCollection') {
-                            setGeometry(geoJson);
-                            message.success('Geometría cargada exitosamente');
-                          } else {
-                            message.error('El archivo no es un GeoJSON válido');
-                          }
-                        } catch (error) {
-                          message.error('Error leyendo el archivo GeoJSON');
-                        }
-                      };
-                      reader.readAsText(file);
-                      return false; // Prevenir upload automático
-                    }}
-                  >
-                    <Button icon={<PlusOutlined />} style={{ width: '100%' }}>
-                      Cargar Archivo
-                    </Button>
-                  </Upload>
-                </Card>
-              </Col>
-            </Row>
-
-            {geometry && (
-              <Alert
-                message="Geometría Definida"
-                description="El predio tiene geometría asignada. Puede continuar con el registro."
-                type="success"
-                showIcon
-                style={{ marginTop: 16 }}
-              />
-            )}
-          </div>
-        );
-
-      default:
-        return null;
-    }
-  };
+  const filteredMunicipios = schemaName
+    ? municipiosList.filter(m => m.schema_name === schemaName)
+    : municipiosList;
 
   return (
-    <div style={{ padding: '24px' }}>
-      <Card>
-        <div style={{ marginBottom: 24 }}>
-          <Space>
-            <Button 
-              icon={<ArrowLeftOutlined />} 
-              onClick={() => navigate('/predios')}
-            >
-              Volver
-            </Button>
-            <Title level={3} style={{ margin: 0 }}>
-              {predioId ? 'Editar Predio' : 'Registrar Nuevo Predio'}
-            </Title>
-          </Space>
-        </div>
+    <div style={{ minHeight: '100vh', background: '#f5f2ec', padding: '28px 20px' }}>
+      <div style={{ maxWidth: 780, margin: '0 auto' }}>
 
-        <Steps current={currentStep} style={{ marginBottom: 32 }}>
-          {steps.map((step, index) => (
-            <Step
-              key={index}
-              title={step.title}
-              description={step.description}
-              icon={step.icon}
-            />
-          ))}
-        </Steps>
-
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={onFinish}
-          autoComplete="off"
-        >
-          {renderStepContent()}
-
-          <Divider />
-
-          <Row justify="space-between">
-            <Col>
-              {currentStep > 0 && (
-                <Button onClick={prevStep}>
-                  Anterior
-                </Button>
-              )}
-            </Col>
-            <Col>
-              <Space>
-                {currentStep < steps.length - 1 ? (
-                  <Button type="primary" onClick={nextStep}>
-                    Siguiente
-                  </Button>
-                ) : (
-                  <Button
-                    type="primary"
-                    htmlType="submit"
-                    loading={loading}
-                    icon={<SaveOutlined />}
-                  >
-                    {predioId ? 'Actualizar Predio' : 'Registrar Predio'}
-                  </Button>
-                )}
-              </Space>
-            </Col>
-          </Row>
-        </Form>
-      </Card>
-
-      {/* Modal del Mapa - Placeholder para implementación futura */}
-      <Modal
-        title="Definir Geometría del Predio"
-        open={mapModalVisible}
-        onCancel={() => setMapModalVisible(false)}
-        width={800}
-        footer={[
-          <Button key="cancel" onClick={() => setMapModalVisible(false)}>
-            Cancelar
-          </Button>,
-          <Button 
-            key="save" 
-            type="primary" 
-            onClick={() => {
-              // TODO: Implementar guardado de geometría desde mapa
-              setMapModalVisible(false);
-              message.info('Funcionalidad de mapa en desarrollo');
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            style={{
+              background: '#fff',
+              border: '1px solid #e8e4dc',
+              borderRadius: 7,
+              padding: '7px 14px',
+              fontSize: 13,
+              fontWeight: 600,
+              color: '#4a4840',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
             }}
           >
-            Guardar Geometría
-          </Button>
-        ]}
-      >
-        <div style={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>
-          <div style={{ textAlign: 'center' }}>
-            <EnvironmentOutlined style={{ fontSize: 48, color: '#1890ff', marginBottom: 16 }} />
-            <Title level={4}>Mapa Interactivo</Title>
-            <Text type="secondary">
-              La funcionalidad de mapa interactivo estará disponible en la próxima versión.
-              Por ahora, puede cargar un archivo GeoJSON con la geometría del predio.
-            </Text>
+            ← Volver
+          </button>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#1a1a18' }}>
+              {predioId ? '✏️ Editar Predio' : '🏠 Registrar Nuevo Predio'}
+            </h1>
+            {schemaName && (
+              <span style={{ fontSize: 12, color: '#8a8880', fontWeight: 600 }}>
+                Esquema: {schemaName}
+              </span>
+            )}
           </div>
         </div>
-      </Modal>
+
+        <form onSubmit={handleSubmit}>
+
+          {/* ── Sección 1: Identificación ─────────────────────────────── */}
+          <div style={sectionStyle}>
+            <p style={sectionTitleStyle}>📋 Identificación del Predio</p>
+
+            <div style={fieldGroupStyle}>
+              <div style={{ flex: 2 }}>
+                <label style={labelStyle}>NPN (Número Predial Nacional) *</label>
+                <input
+                  type="text"
+                  value={form.numero_predial_nacional}
+                  onChange={handleChange('numero_predial_nacional')}
+                  style={inputStyle}
+                  placeholder="30 dígitos numéricos"
+                  maxLength={30}
+                  required
+                />
+                <span style={{ fontSize: 10, color: form.numero_predial_nacional.length === 30 ? '#0a7c50' : '#8a8880', marginTop: 3, display: 'block' }}>
+                  {form.numero_predial_nacional.length} / 30 dígitos
+                </span>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Matrícula Inmobiliaria</label>
+                <input
+                  type="number"
+                  value={form.matricula_inmobiliaria}
+                  onChange={handleChange('matricula_inmobiliaria')}
+                  style={inputStyle}
+                  placeholder="Ej: 12345"
+                  min="0"
+                  max="2147483647"
+                />
+              </div>
+            </div>
+
+            <div style={fieldGroupStyle}>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Número de Ficha / Espacio de Nombres</label>
+                <input
+                  type="text"
+                  value={form.espacio_de_nombres}
+                  onChange={handleChange('espacio_de_nombres')}
+                  style={inputStyle}
+                  placeholder="Ej: GPCONES_Predios"
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Nombre / Descripción</label>
+                <input
+                  type="text"
+                  value={form.nombre}
+                  onChange={handleChange('nombre')}
+                  style={inputStyle}
+                  placeholder="Ej: LOTE LA ESMERALDA"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Sección 2: Ubicación ───────────────────────────────────── */}
+          <div style={sectionStyle}>
+            <p style={sectionTitleStyle}>📍 Ubicación</p>
+
+            <div style={fieldGroupStyle}>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Municipio *</label>
+                <select
+                  value={form.municipio}
+                  onChange={handleMunicipioChange}
+                  style={inputStyle}
+                  required
+                >
+                  <option value="">Seleccionar municipio...</option>
+                  {filteredMunicipios.map(m => (
+                    <option key={m.id} value={m.nombre}>{m.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Departamento</label>
+                <input
+                  type="text"
+                  value={form.departamento}
+                  onChange={handleChange('departamento')}
+                  style={inputStyle}
+                  placeholder="Código departamento"
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Círculo ORIP</label>
+                <input
+                  type="text"
+                  value={form.codigo_orip}
+                  onChange={handleChange('codigo_orip')}
+                  style={inputStyle}
+                  placeholder="Ej: 001"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Sección 3: Clasificación ───────────────────────────────── */}
+          <div style={sectionStyle}>
+            <p style={sectionTitleStyle}>🏷️ Clasificación</p>
+
+            <div style={fieldGroupStyle}>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Condición Predio</label>
+                <select
+                  value={form.condicion_predio}
+                  onChange={handleChange('condicion_predio')}
+                  style={inputStyle}
+                >
+                  <option value="">Seleccionar...</option>
+                  {typeOptions?.condiciones?.map(opt => (
+                    <option key={opt.t_id} value={String(opt.t_id)}>
+                      {opt.dispname || opt.ilicode}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Tipo de Predio</label>
+                <select
+                  value={form.tipo_predio}
+                  onChange={handleChange('tipo_predio')}
+                  style={inputStyle}
+                >
+                  <option value="">Seleccionar...</option>
+                  {typeOptions?.tipos?.map(opt => (
+                    <option key={opt.t_id} value={String(opt.t_id)}>
+                      {opt.dispname || opt.ilicode}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Destino Económico</label>
+                <select
+                  value={form.uso_predio}
+                  onChange={handleChange('uso_predio')}
+                  style={inputStyle}
+                >
+                  <option value="">Seleccionar...</option>
+                  {typeOptions?.destinaciones?.map(opt => (
+                    <option key={opt.t_id} value={String(opt.t_id)}>
+                      {opt.dispname || opt.ilicode}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Sección 4: Propietario Inicial (opcional) ─────────────── */}
+          {!predioId && (
+            <div style={sectionStyle}>
+              <p style={sectionTitleStyle}>👤 Propietario Inicial <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 11, color: '#aaa' }}>(opcional — puede agregarse después)</span></p>
+
+              <div style={fieldGroupStyle}>
+                <div style={{ flex: 2 }}>
+                  <label style={labelStyle}>Nombre Completo</label>
+                  <input
+                    type="text"
+                    value={form.propietario_nombre}
+                    onChange={handleChange('propietario_nombre')}
+                    style={inputStyle}
+                    placeholder="Nombre completo del propietario"
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Tipo de Documento</label>
+                  <select
+                    value={form.propietario_tipo_documento}
+                    onChange={handleChange('propietario_tipo_documento')}
+                    style={inputStyle}
+                  >
+                    <option value="">Seleccionar...</option>
+                    {typeOptions?.documentoTypes?.map(opt => (
+                      <option key={opt.t_id} value={opt.ilicode || opt.dispname}>
+                        {opt.dispname || opt.ilicode}
+                      </option>
+                    )) || (
+                      <>
+                        <option value="CC">Cédula de Ciudadanía</option>
+                        <option value="CE">Cédula de Extranjería</option>
+                        <option value="NIT">NIT</option>
+                        <option value="TI">Tarjeta de Identidad</option>
+                        <option value="RC">Registro Civil</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Número de Documento</label>
+                  <input
+                    type="text"
+                    value={form.propietario_documento}
+                    onChange={handleChange('propietario_documento')}
+                    style={inputStyle}
+                    placeholder="Número de documento"
+                    maxLength={20}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Botones de acción ──────────────────────────────────────── */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 4 }}>
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              style={{
+                background: '#fff',
+                color: '#1a1a18',
+                border: '1px solid #e8e4dc',
+                borderRadius: 7,
+                padding: '9px 20px',
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                background: loading ? '#5a8a70' : '#0a5c3e',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 7,
+                padding: '9px 28px',
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 7,
+                transition: 'background 0.15s',
+              }}
+              onMouseOver={e => { if (!loading) e.currentTarget.style.background = '#084931'; }}
+              onMouseOut={e => { if (!loading) e.currentTarget.style.background = '#0a5c3e'; }}
+            >
+              {loading ? (
+                <>
+                  <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                  Guardando...
+                </>
+              ) : (
+                <>💾 {predioId ? 'Actualizar Predio' : 'Registrar Predio'}</>
+              )}
+            </button>
+          </div>
+        </form>
+
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
     </div>
   );
 };

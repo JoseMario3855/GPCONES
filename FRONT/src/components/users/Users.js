@@ -141,18 +141,22 @@ const Users = () => {
   const handleSubmit = async (values) => {
     try {
       if (editingUser) {
-        // TODO: Implementar endpoint real de actualización
-        message.success('Usuario actualizado exitosamente');
+        const response = await axios.put(`/api/users/${editingUser.id}`, values);
+        if (response.data.success) {
+          message.success('Usuario actualizado exitosamente');
+        }
       } else {
-        // TODO: Implementar endpoint real de creación
-        message.success('Usuario creado exitosamente');
+        const response = await axios.post('/api/users', values);
+        if (response.data.success) {
+          message.success('Usuario creado exitosamente');
+        }
       }
       setModalVisible(false);
       loadUsers();
       loadUserStats();
     } catch (error) {
       console.error('Error guardando usuario:', error);
-      message.error('Error guardando el usuario');
+      message.error(error.response?.data?.message || error.response?.data?.error || 'Error guardando el usuario');
     }
   };
 
@@ -490,7 +494,11 @@ const Users = () => {
               label="Contraseña"
               rules={[
                 { required: true, message: 'La contraseña es obligatoria' },
-                { min: 6, message: 'Mínimo 6 caracteres' }
+                { min: 8, message: 'Mínimo 8 caracteres' },
+                { 
+                  pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/,
+                  message: 'Debe contener mayúscula, minúscula, número y carácter especial'
+                }
               ]}
             >
               <Input.Password placeholder="Ingrese la contraseña" />

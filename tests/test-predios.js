@@ -63,14 +63,21 @@ function getAuthHeaders() {
   };
 }
 
+function generate30DigitNPN() {
+  let npn = '18094';
+  while (npn.length < 30) {
+    npn += Math.floor(Math.random() * 10);
+  }
+  return npn;
+}
+
 // Test CP-010: Crear Nuevo Predio
 async function testCreatePredio() {
   logTest('CP-010: Crear Nuevo Predio');
   
   await getAuthToken();
   
-  const timestamp = Date.now();
-  const testNPN = `TEST-${timestamp}`;
+  const testNPN = generate30DigitNPN();
   
   const predioData = {
     npn: testNPN,
@@ -129,8 +136,7 @@ async function testNPNUnique() {
   await getAuthToken();
   
   // Primero crear un predio
-  const timestamp = Date.now();
-  const testNPN = `TEST-UNIQUE-${timestamp}`;
+  const testNPN = generate30DigitNPN();
   
   const predioData = {
     npn: testNPN,

@@ -289,6 +289,7 @@ const ILIManager = () => {
                 <Option value="LADM_COL_ExtAntioquia">LADM_COL_ExtAntioquia</Option>
                 <Option value="LADM_COL_IGAC_1_0">LADM_COL_IGAC_1_0</Option>
                 <Option value="LADM_COL_IGAC_2_0">LADM_COL_IGAC_2_0</Option>
+                <Option value="Modelo_Aplicacion_Interno_Levantamiento_Catastral_LADMCOL_V1_0">Modelo_Aplicacion_Interno_Levantamiento_Catastral_LADMCOL_V1_0</Option>
               </Select>
             </Form.Item>
           </Col>
@@ -402,6 +403,7 @@ const ILIManager = () => {
                 <Option value="LADM_COL_ExtAntioquia">LADM_COL_ExtAntioquia</Option>
                 <Option value="LADM_COL_IGAC_1_0">LADM_COL_IGAC_1_0</Option>
                 <Option value="LADM_COL_IGAC_2_0">LADM_COL_IGAC_2_0</Option>
+                <Option value="Modelo_Aplicacion_Interno_Levantamiento_Catastral_LADMCOL_V1_0">Modelo_Aplicacion_Interno_Levantamiento_Catastral_LADMCOL_V1_0</Option>
               </Select>
             </Form.Item>
           </Col>

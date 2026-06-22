@@ -174,10 +174,10 @@ class UsersController {
 
       // Crear usuario
       const result = await query(
-        `INSERT INTO users (username, email, full_name, role, password_hash, is_active, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO users (username, email, full_name, role, password_hash, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id, username, email, full_name, role, is_active, created_at`,
-        [username, email, full_name, role, passwordHash, is_active, req.user.id]
+        [username, email, full_name, role, passwordHash, is_active]
       );
 
       const newUser = result.rows[0];
@@ -312,10 +312,7 @@ class UsersController {
       }
 
       updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
-      updateFields.push(`updated_by = $${paramIndex}`);
-      updateValues.push(req.user.id);
-      paramIndex++;
-
+      
       updateValues.push(userId);
 
       const result = await query(
@@ -385,8 +382,8 @@ class UsersController {
 
       // Desactivar usuario (soft delete)
       await query(
-        'UPDATE users SET is_active = false, updated_at = CURRENT_TIMESTAMP, updated_by = $1 WHERE id = $2',
-        [req.user.id, userId]
+        'UPDATE users SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        [userId]
       );
 
       // Registrar en auditoría
@@ -439,8 +436,8 @@ class UsersController {
 
       // Reactivar usuario
       await query(
-        'UPDATE users SET is_active = true, updated_at = CURRENT_TIMESTAMP, updated_by = $1 WHERE id = $2',
-        [req.user.id, userId]
+        'UPDATE users SET is_active = true, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        [userId]
       );
 
       // Registrar en auditoría
@@ -497,8 +494,8 @@ class UsersController {
 
       // Actualizar contraseña
       await query(
-        'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP, updated_by = $2 WHERE id = $3',
-        [passwordHash, req.user.id, userId]
+        'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+        [passwordHash, userId]
       );
 
       // Registrar en auditoría

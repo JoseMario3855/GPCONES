@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout as AntLayout, Menu, Avatar, Dropdown, Button, Space, Typography } from 'antd';
+import { Layout as AntLayout, Menu, Avatar, Dropdown, Button, Space, Typography, Select, message } from 'antd';
+import axios from 'axios';
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -19,7 +20,8 @@ import {
   DatabaseOutlined,
   EyeOutlined,
   EnvironmentOutlined,
-  SwapOutlined
+  SwapOutlined,
+  FileExcelOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -28,9 +30,61 @@ const { Text } = Typography;
 
 const Layout = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const { user, logout, permissions, municipioSeleccionado, cambiarMunicipio } = useAuth();
+  const { user, logout, permissions, municipioSeleccionado, seleccionarMunicipio, cambiarMunicipio } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [municipiosList, setMunicipiosList] = useState([]);
+  const [loadingMunicipios, setLoadingMunicipios] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      loadMunicipios();
+    }
+  }, [user]);
+
+  const loadMunicipios = async () => {
+    setLoadingMunicipios(true);
+    try {
+      const response = await axios.get('/api/municipios?activo=true');
+      if (response.data.success) {
+        const filtered = response.data.data.filter(m => parseInt(m.total_schemas, 10) > 0);
+        setMunicipiosList(filtered);
+      }
+    } catch (error) {
+      console.error('Error loading municipalities in Layout:', error);
+    } finally {
+      setLoadingMunicipios(false);
+    }
+  };
+
+  const handleMunicipioChange = async (municipioId) => {
+    try {
+      const selectedM = municipiosList.find(m => m.id === municipioId);
+      if (!selectedM) return;
+
+      const response = await axios.get(`/api/municipios/${municipioId}`);
+      if (response.data.success && response.data.data.schemas) {
+        const schemasActivos = response.data.data.schemas.filter(s => s.activo);
+        if (schemasActivos.length > 0) {
+          const schemaSeleccionado = schemasActivos[0].schema_name;
+          const municipioData = {
+            municipio_id: selectedM.id,
+            municipio_nombre: selectedM.nombre,
+            municipio_codigo_dane: selectedM.codigo_dane,
+            schema_name: schemaSeleccionado
+          };
+          seleccionarMunicipio(municipioData);
+          navigate('/');
+          window.location.reload();
+        } else {
+          message.warning('El municipio seleccionado no tiene esquemas activos');
+        }
+      }
+    } catch (error) {
+      console.error('Error changing municipality:', error);
+      message.error('Error cambiando de municipio');
+    }
+  };
 
   const handleMenuClick = ({ key }) => {
     navigate(key);
@@ -87,6 +141,12 @@ const Layout = () => {
           icon: <FileTextOutlined />,
           label: 'Lista de Predios'
         },
+
+        ...(permissions.can_approve_predios || permissions.can_manage_users ? [{
+          key: '/predios/revision',
+          icon: <AuditOutlined />,
+          label: 'Revisión Catastral'
+        }] : []),
         ...(permissions.can_create_predios ? [{
           key: '/predios/nuevo',
           icon: <FileTextOutlined />,
@@ -109,6 +169,16 @@ const Layout = () => {
           key: '/xtf/validation',
           icon: <FileTextOutlined />,
           label: 'Validar Modelo'
+        },
+        {
+          key: '/xtf/import-excel',
+          icon: <FileExcelOutlined />,
+          label: 'Importar IGAC Excel'
+        },
+        {
+          key: '/xtf/excel-to-xtf',
+          icon: <SwapOutlined />,
+          label: 'Convertir Excel a XTF'
         }
       ]
     }] : []),
@@ -142,6 +212,12 @@ const Layout = () => {
       icon: <EnvironmentOutlined />,
       label: 'Municipios y Schemas'
     }] : []),
+    // Administración de Catálogos - Solo administradores
+    ...(permissions.can_manage_users ? [{
+      key: '/catalogos',
+      icon: <DatabaseOutlined />,
+      label: 'Catálogos y Dominios'
+    }] : []),
     // Gestión de Usuarios - Solo administradores
     ...(permissions.can_manage_users ? [{
       key: '/users',
@@ -159,7 +235,8 @@ const Layout = () => {
   const getSelectedKeys = () => {
     const path = location.pathname;
     if (path === '/') return ['/'];
-    if (path.startsWith('/predios')) return ['/predios'];
+    if (path.startsWith('/predios')) return [path];
+    if (path.startsWith('/propietarios')) return ['/propietarios'];
     if (path.startsWith('/xtf')) return ['/xtf'];
     if (path.startsWith('/ili')) return ['/ili'];
     if (path.startsWith('/municipios')) return ['/municipios'];
@@ -170,7 +247,7 @@ const Layout = () => {
 
   const getOpenKeys = () => {
     const path = location.pathname;
-    if (path.startsWith('/predios')) return ['/predios'];
+    if (path.startsWith('/predios') || path.startsWith('/propietarios')) return ['/predios'];
     if (path.startsWith('/xtf')) return ['/xtf'];
     return [];
   };
@@ -262,28 +339,27 @@ const Layout = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             {/* Indicador de Municipio Seleccionado */}
             {municipioSeleccionado && (
-              <Button
-                type="text"
-                icon={<EnvironmentOutlined />}
-                onClick={() => {
-                  cambiarMunicipio();
-                  navigate('/select-municipio');
-                }}
+              <Select
+                value={municipioSeleccionado.municipio_id}
+                onChange={handleMunicipioChange}
+                loading={loadingMunicipios}
                 style={{
-                  color: 'white',
-                  border: '1px solid rgba(255, 255, 255, 0.3)',
-                  borderRadius: '6px',
-                  padding: '4px 12px',
-                  height: 'auto'
+                  width: '200px',
                 }}
+                dropdownStyle={{ zIndex: 10000 }}
+                placeholder="Selecciona municipio"
+                className="header-municipio-select"
+                bordered={false}
               >
-                <Space>
-                  <Text style={{ color: 'white', fontSize: '13px' }}>
-                    {municipioSeleccionado.municipio_nombre}
-                  </Text>
-                  <SwapOutlined style={{ fontSize: '12px' }} />
-                </Space>
-              </Button>
+                {municipiosList.map(m => (
+                  <Select.Option key={m.id} value={m.id}>
+                    <Space>
+                      <EnvironmentOutlined />
+                      <span>{m.nombre}</span>
+                    </Space>
+                  </Select.Option>
+                ))}
+              </Select>
             )}
             
             <div style={{ textAlign: 'right' }}>

@@ -1,0 +1,264 @@
+-- Detalle Predio
+select
+max(predio.t_id) "predio_t_id",
+MAX(predio.numero_predial_nacional) "Npn",
+max(predio.departamento) as "Departamento",
+max(predio.municipio) as "Municipio",
+MAX(SUBSTRING(predio.numero_predial_nacional, 6, 2)) as "Zona",
+MAX(SUBSTRING(predio.numero_predial_nacional, 8, 2)) as "Sector" ,
+MAX(SUBSTRING(predio.numero_predial_nacional, 10, 2)) as "Comuna",
+MAX(SUBSTRING(predio.numero_predial_nacional, 12, 2)) as "Barrio",
+MAX(SUBSTRING(predio.numero_predial_nacional, 14, 4)) as "Manzana o Vereda",
+MAX(SUBSTRING(predio.numero_predial_nacional, 18, 4)) as "Terreno",
+MAX(SUBSTRING(predio.numero_predial_nacional, 22, 1)) as "Condicion",
+MAX(SUBSTRING(predio.numero_predial_nacional, 23, 2)) as "Edificio",
+MAX(SUBSTRING(predio.numero_predial_nacional, 25, 2)) as "Piso",
+MAX(SUBSTRING(predio.numero_predial_nacional, 27, 4)) as "Unidad Predial",
+max(predio.matricula_inmobiliaria::varchar(255)) as "MatriculaInmobiliaria",
+max(predio.codigo_orip) as "Circulo",
+max(sisantiguo.libro) as "Libro",
+max(sisantiguo.tomo) as "tomo",
+max(sisantiguo.pagina) as "pagina",
+case
+	when MAX(derechotipo.ilicode)= 'Dominio' then '1|DOMINIO (TRADICION)'
+	when MAX(derechotipo.ilicode)= 'Posesion' then '2|POSESIÓN'
+	when MAX(derechotipo.ilicode)= 'Ocupacion' then '5|OCUPACIÓN'
+end as "ModoAdquisicion",
+case
+    when MAX(condicion.ilicode)= 'NPH' then '1|NPH (0)'
+    when MAX(condicion.ilicode)= 'Informal' then '12|INFORMAL (2)'
+    when MAX(condicion.ilicode)= 'Bien_Uso_Publico' then '13|BIEN DE USO PUBLICO (3)'
+    when MAX(condicion.ilicode)= 'Via' then '11|VIA (4)'
+    when MAX(condicion.ilicode)= 'PH.Matriz' then '2|RPH'
+    when MAX(condicion.ilicode)= 'PH.Unidad_Predial' then '2|RPH'
+    when MAX(condicion.ilicode)= 'Condominio.Matriz' then '3|Parcelacion'
+    when MAX(condicion.ilicode)= 'Condominio.Unidad_Predial' then '3|Parcelacion'
+end as "CondicionPredio",
+case
+    when MAX(destino.ilicode)= 'Acuicola' then '60|ACUICOLA'
+    when MAX(destino.ilicode)= 'Agricola' then '24|AGRICOLA'
+    when MAX(destino.ilicode)= 'Agroindustrial' then '28|AGROINDUSTRIAL'
+    when MAX(destino.ilicode)= 'Agroforestal' then '61|AGROFORESTAL'
+    when MAX(destino.ilicode)= 'Comercial' then '3|COMERCIAL'
+    when MAX(destino.ilicode)= 'Cultural' then '6|CULTURAL'
+    when MAX(destino.ilicode)= 'Educativo' then '27|EDUCATIVO'
+    when MAX(destino.ilicode)= 'Forestal' then '30|FORESTAL'
+    when MAX(destino.ilicode)= 'Habitacional' then '1|HABITACIONAL'
+    when MAX(destino.ilicode)= 'Industrial' then '2|INDUSTRIAL'
+    when MAX(destino.ilicode)= 'Infraestructura_Asociada_Produccion_Agropecuaria' then '62|INFRAESTRUCTURA_ASOCIADA_PRODUCCIÓN_AGROPECUARIA'
+    when MAX(destino.ilicode)= 'Infraestructura_Hidraulica' then '63|INFRAESTRUCTURA HIDRAULICA'
+    when MAX(destino.ilicode)= 'Infraestructura_Saneamiento_Basico' then '64|INFRAESTRUCTURA SANEAMIENTO BÁSICO'
+    when MAX(destino.ilicode)= 'Infraestructura_Seguridad' then '67|INFRAESTRUCTURA SEGURIDAD'
+    when MAX(destino.ilicode)= 'Infraestructura_Transporte' then '65|INFRAESTRUCTURA TRANSPORTE'
+    when MAX(destino.ilicode)= 'Institucional' then '9|INSTITUCIONAL'
+    when MAX(destino.ilicode)= 'Mineria_Hidrocarburos' then '5|MINEROS_HIDROCARBUROS'
+    when MAX(destino.ilicode)= 'Lote_Urbanizable_No_Urbanizado' then '13|LOTE URBANIZABLE NO URBANIZADO'
+    when MAX(destino.ilicode)= 'Lote_Urbanizado_No_Construido' then '12|LOTE URBANIZADO NO CONSTRUIDO'
+    when MAX(destino.ilicode)= 'Lote_No_Urbanizable' then '14|LOTE NO URBANIZABLE'
+    when MAX(destino.ilicode)= 'Pecuario' then '25|PECUARIO'
+    when MAX(destino.ilicode)= 'Recreacional' then '7|RECREACIONAL'
+    when MAX(destino.ilicode)= 'Religioso' then '29|RELIGIOSO'
+    when MAX(destino.ilicode)= 'Salubridad' then '8|SALUBRIDAD'
+    when MAX(destino.ilicode)= 'Servicios_Funerarios' then '66|SERVICIOS_FUNERARIOS'
+    when MAX(destino.ilicode)= 'Uso_Publico' then '19|USO PUBLICO'
+end as "DestinoEcconomico",
+max(tipodir.ilicode) as "TipoDireccion",
+CASE
+	WHEN MAX(tipodir.ilicode) = 'No_Estructurada' THEN MAX(direccion.nombre_predio)
+ELSE
+    TRIM(CONCAT_WS(' ',
+        MAX(CASE
+            WHEN clasevia.itfcode = '0' THEN 'AC'
+            WHEN clasevia.itfcode = '1' THEN 'ACR'
+            WHEN clasevia.itfcode = '2' THEN 'AV'
+            WHEN clasevia.itfcode = '3' THEN 'AU'
+            WHEN clasevia.itfcode = '4' THEN 'CIR'
+            WHEN clasevia.itfcode = '5' THEN 'CL'
+            WHEN clasevia.itfcode = '6' THEN 'CR'
+            WHEN clasevia.itfcode = '7' THEN 'DG'
+            WHEN clasevia.itfcode = '8' THEN 'TV'
+            WHEN clasevia.itfcode = '9' THEN 'CQ'
+        END),
+        MAX(direccion.valor_via_principal),
+        MAX(direccion.letra_via_principal),
+        MAX(sector.ilicode),
+        
+        -- Agregar "N" solo si valor_via_principal no es NULL
+        CASE 
+            WHEN MAX(direccion.valor_via_principal) IS NOT NULL THEN 'N' 
+            ELSE NULL 
+        END,
+        
+        MAX(direccion.valor_via_generadora),
+        MAX(direccion.letra_via_generadora),
+        MAX(sectorp.ilicode),
+        
+        -- Agregar "-" solo si numero_predio no es NULL
+        CASE 
+            WHEN MAX(direccion.numero_predio) IS NOT NULL THEN '-' 
+        ELSE NULL 
+        END,            
+        MAX(direccion.numero_predio),
+        MAX(direccion.complemento)
+        ))
+END AS "DireccionReal",
+max(predio.nombre) as "DireccionNombre",
+--datosph
+max(datosph.total_unidades_privadas) as "total_unidades",
+max(datosph.numero_torres) as "numero_torres",
+max(datosph.area_total_terreno) as "area_total_terreno",
+max(datosph.area_total_terreno_comun) as "area_total_terreno_comun",
+max(datosph.area_total_terreno_privada) as "area_total_terreno_privada",
+max(datosph.area_total_construida) as "area_total_construida",
+max(datosph.area_total_construida_comun) as "area_total_construida_comun",
+max(datosph.area_total_construida_privada) as area_total_construida_privada
+
+
+from modelointerno.ilc_predio predio
+join modelointerno.ilc_destinacioneconomicatipo as destino on predio.destinacion_economica = destino.t_id
+join modelointerno.ilc_prediotipo as prediotipo on predio.tipo=prediotipo.t_id 
+join modelointerno.ilc_condicionprediotipo condicion on condicion.t_id=predio.condicion_predio 
+left join modelointerno.extreferenciaregistralsistemaantiguo sisantiguo on predio.t_id=sisantiguo.ilc_predio_referencia_registral_sistema_antiguo
+left join modelointerno.ilc_derecho derecho on predio.t_id=derecho.unidad
+left join modelointerno.ilc_derechocatastraltipo derechotipo  on derechotipo.t_id=derecho.tipo
+left join modelointerno.extdireccion direccion on direccion.ilc_predio_direccion=predio.t_id
+left join modelointerno.extdireccion_clase_via_principal clasevia on direccion.clase_via_principal = clasevia.t_id
+left join modelointerno.extdireccion_sector_ciudad sector on direccion.sector_ciudad = sector.t_id
+left join modelointerno.extdireccion_tipo_direccion tipodir on direccion.tipo_direccion =tipodir.t_id
+left join modelointerno.extdireccion_sector_predio sectorp on direccion.sector_predio =sectorp.t_id
+left join modelointerno.cr_datosphcondominio datosph on datosph.ilc_predio =predio.t_id
+group by predio.t_id
+----------------------------------------------------------------------------------------------------------------------------------------------------
+-- detalle Propietarios
+
+SELECT
+    
+    --colrfuente.t_id,
+    --colrfuente.fuente_administrativa,
+    --colrfuente.rrr,
+	predio.t_id as "predio_t_id" ,
+    predio.numero_predial_nacional                 AS "Npn",
+    tipoderecho.ilicode                            AS "TipoDerecho",
+    tipogrupo.ilicode                              AS "TipoAgrupacion",
+    
+             
+    fuentetipo.ilicode as "TipoFuente",
+             
+    fuente.numero_fuente as "Escritura",   
+    fuente.ente_emisor as "Entidad",
+    fuente.fecha_documento_fuente  as "FechaEscritura",
+    derecho.fecha_inicio_tenencia as "Fecha",  
+    COALESCE(tipodoc_directo.ilicode, 
+             tipodoc_miembro.ilicode)              AS "TipoDocumento",
+
+    COALESCE(interesado_directo.documento_identidad,
+             miembro.documento_identidad)          AS "Documento",
+
+    COALESCE(interesado_directo.primer_nombre,
+             miembro.primer_nombre)                AS "PrimerNombre",
+
+    COALESCE(interesado_directo.segundo_nombre,
+             miembro.segundo_nombre)               AS "SegundoNombre",
+
+    COALESCE(interesado_directo.primer_apellido,
+             miembro.primer_apellido)              AS "PrimerApellido",
+
+    COALESCE(interesado_directo.segundo_apellido,
+             miembro.segundo_apellido)             AS "SegundoApellido",
+             
+    COALESCE(interesado_directo.razon_social,
+             miembro.razon_social)                AS "RazonSocial",
+    
+    case
+    	when miembros.participacion is not null then    miembros.participacion *100
+    	else 100
+    end
+    AS "Derecho",
+    
+    disponibilidad.ilicode as "Disponibilidad"
+    
+    --fuente.espacio_de_nombres, (OBLIGATORIO)
+    --fuente.local_id, (OBLIGATORIO)
+    
+        
+             
+
+FROM modelointerno.col_rrrfuente colrfuente
+
+LEFT JOIN modelointerno.ilc_derecho derecho
+    ON derecho.t_id = colrfuente.rrr
+
+LEFT JOIN modelointerno.ilc_predio predio
+    ON predio.t_id = derecho.unidad
+
+LEFT JOIN modelointerno.ilc_derechocatastraltipo tipoderecho
+    ON tipoderecho.t_id = derecho.tipo
+
+LEFT JOIN modelointerno.col_rrrinteresado colrinteresado
+    ON colrinteresado.rrr = derecho.t_id
+
+-- Rama 1: interesado directo
+LEFT JOIN modelointerno.ilc_interesado interesado_directo
+    ON interesado_directo.t_id = colrinteresado.interesado_ilc_interesado
+
+LEFT JOIN modelointerno.cr_documentotipo tipodoc_directo
+    ON tipodoc_directo.t_id = interesado_directo.tipo_documento
+
+-- Rama 2: agrupación
+LEFT JOIN modelointerno.cr_agrupacioninteresados agrupacion
+    ON agrupacion.t_id = colrinteresado.interesado_cr_agrupacioninteresados
+
+LEFT JOIN modelointerno.col_grupointeresadotipo tipogrupo
+    ON tipogrupo.t_id = agrupacion.tipo
+
+-- Miembros de la agrupación
+LEFT JOIN modelointerno.col_miembros miembros
+    ON miembros.agrupacion = agrupacion.t_id
+
+LEFT JOIN modelointerno.ilc_interesado miembro
+    ON miembro.t_id = miembros.interesado_ilc_interesado
+
+LEFT JOIN modelointerno.cr_documentotipo tipodoc_miembro
+    ON tipodoc_miembro.t_id = miembro.tipo_documento
+ join modelointerno.ilc_fuenteadministrativa fuente
+	on fuente.t_id=colrfuente.fuente_administrativa 
+left join modelointerno.col_fuenteadministrativatipo fuentetipo 
+	on fuentetipo.t_id=fuente.tipo
+	
+left join modelointerno.col_estadodisponibilidadtipo disponibilidad
+	on disponibilidad.t_id=fuente.estado_disponibilidad 
+;
+-----------------------------------------
+--construcciones
+
+select
+max(predio.t_id) as "predio_t_id",
+max(caracteristica.t_id) as"caracteristica",
+max(unidadtipo.ilicode) as "tipo",
+max(caracteristica.identificador) as "identificador",
+max(caracteristica.total_plantas) as "total_plantas",
+max(unidad.altura) as "Altura",
+max(unidad.planta_ubicacion) as "plantaubicacion",
+max(unidad.etiqueta) as "etiqueta",
+max(caracteristica.anio_construccion) as "añoConstruccion",
+max(uso.ilicode) as "Uso",
+max(usotrad.ilicode) as "usoTadicional"
+
+--consplantatipo.ilicode
+
+from modelointerno.ilc_caracteristicasunidadconstruccion caracteristica
+join modelointerno.cr_unidadconstrucciontipo unidadtipo 
+	on unidadtipo.t_id=caracteristica.tipo_unidad_construccion
+join modelointerno.cr_usouconstipo uso
+	on uso.t_id =caracteristica.uso 
+left join modelointerno.ilc_usostradicionalesculturalestipo usotrad
+	on usotrad.t_id=caracteristica.usos_tradicionales_culturales 
+join modelointerno.cr_unidadconstruccion unidad
+	on unidad.cr_caracteristicasunidadconstruccion =caracteristica.t_id
+left join modelointerno.cr_construccionplantatipo consplantatipo	
+	on consplantatipo.t_id=unidad.tipo_planta
+left join modelointerno.col_uebaunit baunit
+	on baunit.ue_cr_unidadconstruccion=unidad.t_id 
+left join modelointerno.ilc_predio predio
+	on predio.t_id=baunit.baunit
+group by caracteristica.t_id 

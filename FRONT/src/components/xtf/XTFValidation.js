@@ -35,6 +35,32 @@ const { Option } = Select;
 const { Dragger } = Upload;
 const { Panel } = Collapse;
 
+const getModelDisplayName = (model) => {
+  switch (model) {
+    case 'antioquia':
+      return 'Antioquia 2.0';
+    case 'igac':
+      return 'IGAC LADM-COL';
+    case 'modelo-interno':
+      return 'Modelo Interno V 1.0.1';
+    default:
+      return model;
+  }
+};
+
+const getModelTagColor = (model) => {
+  switch (model) {
+    case 'antioquia':
+      return 'green';
+    case 'igac':
+      return 'blue';
+    case 'modelo-interno':
+      return 'purple';
+    default:
+      return 'default';
+  }
+};
+
 const XTFValidation = () => {
   const { permissions } = useAuth();
   const [validating, setValidating] = useState(false);
@@ -270,6 +296,7 @@ const XTFValidation = () => {
                 >
                   <Option value="antioquia">XTF Modelo Extendido Antioquia 2.0</Option>
                   <Option value="igac">XTF 1.0 IGAC (LADM-COL)</Option>
+                  <Option value="modelo-interno">Modelo Interno Levantamiento Catastral V 1.0.1</Option>
                 </Select>
               </div>
 
@@ -281,7 +308,7 @@ const XTFValidation = () => {
                   Arrastra el archivo XTF para validar
                 </p>
                 <p className="ant-upload-hint">
-                  Se validará contra el modelo {selectedModel === 'antioquia' ? 'Antioquia 2.0' : 'IGAC LADM-COL'}
+                  Se validará contra el modelo {getModelDisplayName(selectedModel)}
                 </p>
               </Dragger>
 
@@ -303,8 +330,8 @@ const XTFValidation = () => {
               <div>
                 <Text strong>Modelo Seleccionado:</Text>
                 <br />
-                <Tag color={selectedModel === 'antioquia' ? 'green' : 'blue'} style={{ marginTop: '8px' }}>
-                  {selectedModel === 'antioquia' ? 'Antioquia 2.0' : 'IGAC LADM-COL'}
+                <Tag color={getModelTagColor(selectedModel)} style={{ marginTop: '8px' }}>
+                  {getModelDisplayName(selectedModel)}
                 </Tag>
               </div>
               
@@ -347,7 +374,7 @@ const XTFValidation = () => {
             type={validationResult.success ? 'success' : 'error'}
             showIcon
             style={{ marginBottom: '16px' }}
-            description={`Modelo: ${validationResult.model === 'antioquia' ? 'Antioquia 2.0' : 'IGAC LADM-COL'} • Archivo: ${validationResult.filename}`}
+            description={`Modelo: ${getModelDisplayName(validationResult.model)} • Archivo: ${validationResult.filename}`}
           />
 
           {validationResult.success && (
@@ -471,8 +498,8 @@ const XTFValidation = () => {
                 dataIndex: 'model',
                 key: 'model',
                 render: (model) => (
-                  <Tag color={model === 'antioquia' ? 'green' : 'blue'}>
-                    {model === 'antioquia' ? 'Antioquia 2.0' : 'IGAC LADM-COL'}
+                  <Tag color={getModelTagColor(model)}>
+                    {getModelDisplayName(model)}
                   </Tag>
                 )
               },

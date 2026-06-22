@@ -312,3 +312,37 @@ code {
   color: white;
   font-weight: 600;
 }
+
+/* Select de municipio en el header */
+.header-municipio-select {
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  border-radius: 6px !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+  transition: all 0.3s;
+}
+
+.header-municipio-select:hover {
+  background: rgba(255, 255, 255, 0.25) !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.header-municipio-select .ant-select-selector {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  height: 32px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.header-municipio-select .ant-select-selection-item {
+  color: white !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.header-municipio-select .ant-select-arrow {
+  color: white !important;
+}

@@ -22,6 +22,8 @@ const auditRoutes = require('./routes/audit');
 const iliRoutes = require('./routes/ili');
 const municipiosRoutes = require('./routes/municipios');
 const consultaAlfanumericoRoutes = require('./routes/consultaAlfanumerico');
+const catalogosRoutes = require('./routes/catalogos');
+const propietariosRoutes = require('./routes/propietarios');
 
 // Importar configuración de base de datos
 const { testConnection } = require('./config/database');
@@ -29,8 +31,10 @@ const { testConnection } = require('./config/database');
 const app = express();
 const PORT = process.env.PORT || 3002;
 
-// Configurar trust proxy para rate limiting
-app.set('trust proxy', true);
+// Configurar trust proxy de forma segura:
+// - desarrollo: sin proxy
+// - producción: confiar solo en 1 salto de proxy (ej. Nginx/Load Balancer)
+app.set('trust proxy', 1);
 
 // Verificar que las variables de entorno se están leyendo
 console.log('🔧 Variables de entorno cargadas:');
@@ -44,13 +48,26 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Logger de peticiones (optimizado para no saturar consola con cuerpos grandes)
+app.use((req, res, next) => {
+  console.log(`📡 [${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+  if (req.method === 'POST' || req.method === 'PUT') {
+    const bodyStr = JSON.stringify(req.body) || '';
+    if (bodyStr.length > 500) {
+      console.log(`📦 Body: (Grande, ${bodyStr.length} caracteres) Claves:`, Object.keys(req.body || {}));
+    } else {
+      console.log('📦 Body:', bodyStr);
+    }
+  }
+  next();
+});
+
 // Rate limiting - Excluir completamente las rutas de autenticación
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   max: process.env.NODE_ENV === 'production' ? 100 : 1000, // 1000 requests en desarrollo, 100 en producción
   standardHeaders: true,
   legacyHeaders: false,
-  trustProxy: true,
   message: 'Demasiadas solicitudes. Por favor, espera un momento antes de intentar nuevamente.',
   skip: (req) => {
     // Excluir TODAS las rutas de autenticación del rate limiting
@@ -128,6 +145,12 @@ app.use(`${API_PREFIX}/municipios`, municipiosRoutes);
 
 // Rutas de consulta alfanumérica
 app.use(`${API_PREFIX}/consulta-alfanumerico`, consultaAlfanumericoRoutes);
+
+// Rutas de catálogos
+app.use(`${API_PREFIX}/catalogos`, catalogosRoutes);
+
+// Rutas de propietarios
+app.use(`${API_PREFIX}/propietarios`, propietariosRoutes);
 
 // =====================================================
 // RUTAS DE DOCUMENTACIÓN

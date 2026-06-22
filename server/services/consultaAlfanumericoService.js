@@ -7,129 +7,348 @@ const path = require('path');
  * Las consultas están diseñadas para trabajar con schemas LADM-COL
  */
 
-// Cargar consultas procesadas
+// Cargar consultas procesadas desde JSON como fallback
 let consultasProcesadas = {};
 try {
   const consultasPath = path.join(__dirname, '../../database/consultas_alfanumerico.json');
-  console.log(`📂 Buscando consultas en: ${consultasPath}`);
+  console.log(`📂 Buscando consultas fallback en: ${consultasPath}`);
   if (fs.existsSync(consultasPath)) {
     consultasProcesadas = JSON.parse(fs.readFileSync(consultasPath, 'utf8'));
-    console.log(`✅ Consultas cargadas: ${Object.keys(consultasProcesadas).length} consultas disponibles`);
-    console.log(`📋 Consultas disponibles: ${Object.keys(consultasProcesadas).join(', ')}`);
+    console.log(`✅ Consultas fallback cargadas: ${Object.keys(consultasProcesadas).length} consultas disponibles`);
   } else {
-    console.error(`❌ Archivo de consultas no encontrado en: ${consultasPath}`);
+    console.log(`⚠️ Archivo de consultas fallback no encontrado`);
   }
 } catch (error) {
-  console.error('❌ Error cargando las consultas procesadas:', error.message);
-  console.error('📋 Stack:', error.stack);
+  console.error('❌ Error cargando las consultas procesadas fallback:', error.message);
 }
 
+// ─── SQL Queries defined directly as JavaScript constants ────────────────────
+const SQL_FICHAS = `
+select
+  max(predio.t_id) as "predio_t_id",
+  max(predio.espacio_de_nombres) as "NroFicha",
+  MAX(predio.numero_predial_nacional) as "Npn",
+  max(predio.departamento) as "Departamento",
+  max(predio.municipio) as "Municipio",
+  MAX(SUBSTRING(predio.numero_predial_nacional, 6, 2)) as "Zona",
+  MAX(SUBSTRING(predio.numero_predial_nacional, 8, 2)) as "Sector" ,
+  MAX(SUBSTRING(predio.numero_predial_nacional, 10, 2)) as "Comuna",
+  MAX(SUBSTRING(predio.numero_predial_nacional, 12, 2)) as "Barrio",
+  MAX(SUBSTRING(predio.numero_predial_nacional, 14, 4)) as "Manzana o Vereda",
+  MAX(SUBSTRING(predio.numero_predial_nacional, 18, 4)) as "Terreno",
+  MAX(SUBSTRING(predio.numero_predial_nacional, 22, 1)) as "Condicion",
+  MAX(SUBSTRING(predio.numero_predial_nacional, 23, 2)) as "Edificio",
+  MAX(SUBSTRING(predio.numero_predial_nacional, 25, 2)) as "Piso",
+  MAX(SUBSTRING(predio.numero_predial_nacional, 27, 4)) as "Unidad Predial",
+  max(predio.matricula_inmobiliaria::varchar(255)) as "MatriculaInmobiliaria",
+  max(predio.codigo_orip) as "Circulo",
+  max(sisantiguo.libro) as "Libro",
+  max(sisantiguo.tomo) as "tomo",
+  max(sisantiguo.pagina) as "pagina",
+  case
+    when MAX(derechotipo.ilicode)= 'Dominio' then '1|DOMINIO (TRADICION)'
+    when MAX(derechotipo.ilicode)= 'Posesion' then '2|POSESIÓN'
+    when MAX(derechotipo.ilicode)= 'Ocupacion' then '5|OCUPACIÓN'
+  end as "ModoAdquisicion",
+  case
+    when MAX(condicion.ilicode)= 'NPH' then '1|NPH (0)'
+    when MAX(condicion.ilicode)= 'Informal' then '12|INFORMAL (2)'
+    when MAX(condicion.ilicode)= 'Bien_Uso_Publico' then '13|BIEN DE USO PUBLICO (3)'
+    when MAX(condicion.ilicode)= 'Via' then '11|VIA (4)'
+    when MAX(condicion.ilicode)= 'PH.Matriz' then '2|RPH'
+    when MAX(condicion.ilicode)= 'PH.Unidad_Predial' then '2|RPH'
+    when MAX(condicion.ilicode)= 'Condominio.Matriz' then '3|Parcelacion'
+    when MAX(condicion.ilicode)= 'Condominio.Unidad_Predial' then '3|Parcelacion'
+  end as "CondicionPredio",
+  case
+    when MAX(destino.ilicode)= 'Acuicola' then '60|ACUICOLA'
+    when MAX(destino.ilicode)= 'Agricola' then '24|AGRICOLA'
+    when MAX(destino.ilicode)= 'Agroindustrial' then '28|AGROINDUSTRIAL'
+    when MAX(destino.ilicode)= 'Agroforestal' then '61|AGROFORESTAL'
+    when MAX(destino.ilicode)= 'Comercial' then '3|COMERCIAL'
+    when MAX(destino.ilicode)= 'Cultural' then '6|CULTURAL'
+    when MAX(destino.ilicode)= 'Educativo' then '27|EDUCATIVO'
+    when MAX(destino.ilicode)= 'Forestal' then '30|FORESTAL'
+    when MAX(destino.ilicode)= 'Habitacional' then '1|HABITACIONAL'
+    when MAX(destino.ilicode)= 'Industrial' then '2|INDUSTRIAL'
+    when MAX(destino.ilicode)= 'Infraestructura_Asociada_Produccion_Agropecuaria' then '62|INFRAESTRUCTURA_ASOCIADA_PRODUCCIÓN_AGROPECUARIA'
+    when MAX(destino.ilicode)= 'Infraestructura_Hidraulica' then '63|INFRAESTRUCTURA HIDRAULICA'
+    when MAX(destino.ilicode)= 'Infraestructura_Saneamiento_Basico' then '64|INFRAESTRUCTURA SANEAMIENTO BÁSICO'
+    when MAX(destino.ilicode)= 'Infraestructura_Seguridad' then '67|INFRAESTRUCTURA SEGURIDAD'
+    when MAX(destino.ilicode)= 'Infraestructura_Transporte' then '65|INFRAESTRUCTURA TRANSPORTE'
+    when MAX(destino.ilicode)= 'Institucional' then '9|INSTITUCIONAL'
+    when MAX(destino.ilicode)= 'Mineria_Hidrocarburos' then '5|MINEROS_HIDROCARBUROS'
+    when MAX(destino.ilicode)= 'Lote_Urbanizable_No_Urbanizado' then '13|LOTE URBANIZABLE NO URBANIZADO'
+    when MAX(destino.ilicode)= 'Lote_Urbanizado_No_Construido' then '12|LOTE URBANIZADO NO CONSTRUIDO'
+    when MAX(destino.ilicode)= 'Lote_No_Urbanizable' then '14|LOTE NO URBANIZABLE'
+    when MAX(destino.ilicode)= 'Pecuario' then '25|PECUARIO'
+    when MAX(destino.ilicode)= 'Recreacional' then '7|RECREACIONAL'
+    when MAX(destino.ilicode)= 'Religioso' then '29|RELIGIOSO'
+    when MAX(destino.ilicode)= 'Salubridad' then '8|SALUBRIDAD'
+    when MAX(destino.ilicode)= 'Servicios_Funerarios' then '66|SERVICIOS_FUNERARIOS'
+    when MAX(destino.ilicode)= 'Uso_Publico' then '19|USO PUBLICO'
+  end as "DestinoEcconomico",
+  max(tipodir.ilicode) as "TipoDireccion",
+  max(prediotipo.ilicode) as "Tipo",
+  CASE
+    WHEN MAX(tipodir.ilicode) = 'No_Estructurada' THEN MAX(direccion.nombre_predio)
+  ELSE
+    TRIM(CONCAT_WS(' ',
+      MAX(CASE
+        WHEN clasevia.itfcode = '0' THEN 'AC'
+        WHEN clasevia.itfcode = '1' THEN 'ACR'
+        WHEN clasevia.itfcode = '2' THEN 'AV'
+        WHEN clasevia.itfcode = '3' THEN 'AU'
+        WHEN clasevia.itfcode = '4' THEN 'CIR'
+        WHEN clasevia.itfcode = '5' THEN 'CL'
+        WHEN clasevia.itfcode = '6' THEN 'CR'
+        WHEN clasevia.itfcode = '7' THEN 'DG'
+        WHEN clasevia.itfcode = '8' THEN 'TV'
+        WHEN clasevia.itfcode = '9' THEN 'CQ'
+      END),
+      MAX(direccion.valor_via_principal),
+      MAX(direccion.letra_via_principal),
+      MAX(sector.ilicode),
+      
+      -- Agregar "N" solo si valor_via_principal no es NULL
+      CASE 
+        WHEN MAX(direccion.valor_via_principal) IS NOT NULL THEN 'N' 
+        ELSE NULL 
+      END,
+      
+      MAX(direccion.valor_via_generadora),
+      MAX(direccion.letra_via_generadora),
+      MAX(sectorp.ilicode),
+      
+      -- Agregar "-" solo si numero_predio no es NULL
+      CASE 
+        WHEN MAX(direccion.numero_predio) IS NOT NULL THEN '-' 
+        ELSE NULL 
+      END,            
+      MAX(direccion.numero_predio),
+      MAX(direccion.complemento)
+    ))
+  END AS "DireccionReal",
+  max(predio.nombre) as "DireccionNombre",
+  --datosph
+  max(datosph.total_unidades_privadas) as "total_unidades",
+  max(datosph.numero_torres) as "numero_torres",
+  max(datosph.area_total_terreno) as "area_total_terreno",
+  max(datosph.area_total_terreno_comun) as "area_total_terreno_comun",
+  max(datosph.area_total_terreno_privada) as "area_total_terreno_privada",
+  max(datosph.area_total_construida) as "area_total_construida",
+  max(datosph.area_total_construida_comun) as "area_total_construida_comun",
+  max(datosph.area_total_construida_privada) as area_total_construida_privada
+from \${schemaName}.ilc_predio predio
+join \${schemaName}.ilc_destinacioneconomicatipo as destino on predio.destinacion_economica = destino.t_id
+join \${schemaName}.ilc_prediotipo as prediotipo on predio.tipo=prediotipo.t_id 
+join \${schemaName}.ilc_condicionprediotipo condicion on condicion.t_id=predio.condicion_predio 
+left join \${schemaName}.extreferenciaregistralsistemaantiguo sisantiguo on predio.t_id=sisantiguo.ilc_predio_referencia_registral_sistema_antiguo
+left join \${schemaName}.ilc_derecho derecho on predio.t_id=derecho.unidad
+left join \${schemaName}.ilc_derechocatastraltipo derechotipo  on derechotipo.t_id=derecho.tipo
+left join \${schemaName}.extdireccion direccion on direccion.ilc_predio_direccion=predio.t_id
+left join \${schemaName}.extdireccion_clase_via_principal clasevia on direccion.clase_via_principal = clasevia.t_id
+left join \${schemaName}.extdireccion_sector_ciudad sector on direccion.sector_ciudad = sector.t_id
+left join \${schemaName}.extdireccion_tipo_direccion tipodir on direccion.tipo_direccion =tipodir.t_id
+left join \${schemaName}.extdireccion_sector_predio sectorp on direccion.sector_predio =sectorp.t_id
+left join \${schemaName}.cr_datosphcondominio datosph on datosph.ilc_predio =predio.t_id
+group by predio.t_id
+`;
+
+const SQL_PROPIETARIOS = `
+SELECT
+  predio.t_id as "predio_t_id",
+  derecho.t_id as "rrr",
+  predio.numero_predial_nacional AS "Npn",
+  predio.espacio_de_nombres AS "NroFicha",
+  tipoderecho.ilicode AS "TipoDerecho",
+  tipogrupo.ilicode AS "TipoAgrupacion",
+  fuentetipo.ilicode as "TipoFuente",
+  fuente.numero_fuente as "Escritura",   
+  fuente.ente_emisor as "Entidad",
+  fuente.fecha_documento_fuente as "FechaEscritura",
+  derecho.fecha_inicio_tenencia as "Fecha",  
+  COALESCE(tipodoc_directo.ilicode, tipodoc_miembro.ilicode) AS "TipoDocumento",
+  COALESCE(interesado_directo.documento_identidad, miembro.documento_identidad) AS "Documento",
+  COALESCE(interesado_directo.primer_nombre, miembro.primer_nombre) AS "PrimerNombre",
+  COALESCE(interesado_directo.segundo_nombre, miembro.segundo_nombre) AS "SegundoNombre",
+  COALESCE(interesado_directo.primer_apellido, miembro.primer_apellido) AS "PrimerApellido",
+  COALESCE(interesado_directo.segundo_apellido, miembro.segundo_apellido) AS "SegundoApellido",
+  COALESCE(interesado_directo.razon_social, miembro.razon_social) AS "RazonSocial",
+  case
+    when miembros.participacion is not null then miembros.participacion * 100
+    else 100
+  end AS "Derecho",
+  disponibilidad.ilicode as "Disponibilidad"
+FROM \${schemaName}.col_rrrfuente colrfuente
+LEFT JOIN \${schemaName}.ilc_derecho derecho ON derecho.t_id = colrfuente.rrr
+LEFT JOIN \${schemaName}.ilc_predio predio ON predio.t_id = derecho.unidad
+LEFT JOIN \${schemaName}.ilc_derechocatastraltipo tipoderecho ON tipoderecho.t_id = derecho.tipo
+LEFT JOIN \${schemaName}.col_rrrinteresado colrinteresado ON colrinteresado.rrr = derecho.t_id
+-- Rama 1: interesado directo
+LEFT JOIN \${schemaName}.ilc_interesado interesado_directo ON interesado_directo.t_id = colrinteresado.interesado_ilc_interesado
+LEFT JOIN \${schemaName}.cr_documentotipo tipodoc_directo ON tipodoc_directo.t_id = interesado_directo.tipo_documento
+-- Rama 2: agrupación
+LEFT JOIN \${schemaName}.cr_agrupacioninteresados agrupacion ON agrupacion.t_id = colrinteresado.interesado_cr_agrupacioninteresados
+LEFT JOIN \${schemaName}.col_grupointeresadotipo tipogrupo ON tipogrupo.t_id = agrupacion.tipo
+-- Miembros de la agrupación
+LEFT JOIN \${schemaName}.col_miembros miembros ON miembros.agrupacion = agrupacion.t_id
+LEFT JOIN \${schemaName}.ilc_interesado miembro ON miembro.t_id = miembros.interesado_ilc_interesado
+LEFT JOIN \${schemaName}.cr_documentotipo tipodoc_miembro ON tipodoc_miembro.t_id = miembro.tipo_documento
+join \${schemaName}.ilc_fuenteadministrativa fuente on fuente.t_id=colrfuente.fuente_administrativa 
+left join \${schemaName}.col_fuenteadministrativatipo fuentetipo on fuentetipo.t_id=fuente.tipo
+left join \${schemaName}.col_estadodisponibilidadtipo disponibilidad on disponibilidad.t_id=fuente.estado_disponibilidad 
+`;
+
+const SQL_CONSTRUCCIONES = `
+select
+  max(predio.t_id) as "predio_t_id",
+  max(predio.espacio_de_nombres) as "NroFicha",
+  max(predio.numero_predial_nacional) as "Npn",
+  max(caracteristica.t_id) as "caracteristica",
+  max(unidadtipo.ilicode) as "tipo",
+  max(caracteristica.identificador) as "identificador",
+  max(caracteristica.total_plantas) as "total_plantas",
+  max(unidad.altura) as "Altura",
+  max(unidad.planta_ubicacion) as "plantaubicacion",
+  max(unidad.etiqueta) as "etiqueta",
+  max(caracteristica.anio_construccion) as "añoConstruccion",
+  max(uso.ilicode) as "Uso",
+  max(usotrad.ilicode) as "usoTadicional",
+  max(consplantatipo.ilicode) as "tipoPlanta"
+from \${schemaName}.ilc_caracteristicasunidadconstruccion caracteristica
+join \${schemaName}.cr_unidadconstrucciontipo unidadtipo on unidadtipo.t_id=caracteristica.tipo_unidad_construccion
+join \${schemaName}.cr_usouconstipo uso on uso.t_id =caracteristica.uso 
+left join \${schemaName}.ilc_usostradicionalesculturalestipo usotrad on usotrad.t_id=caracteristica.usos_tradicionales_culturales 
+join \${schemaName}.cr_unidadconstruccion unidad on unidad.cr_caracteristicasunidadconstruccion =caracteristica.t_id
+left join \${schemaName}.cr_construccionplantatipo consplantatipo on consplantatipo.t_id=unidad.tipo_planta
+left join \${schemaName}.col_uebaunit baunit on baunit.ue_cr_unidadconstruccion=unidad.t_id 
+left join \${schemaName}.ilc_predio predio on predio.t_id=baunit.baunit
+group by caracteristica.t_id 
+`;
+
 class ConsultaAlfanumericoService {
+  /**
+   * Comprueba si un schema utiliza LADM-COL estándar (tiene lc_predio en lugar de ilc_predio)
+   */
+  async isStandardSchema(schemaName) {
+    try {
+      const result = await query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = $1 AND table_name = 'lc_predio'
+        );
+      `, [schemaName]);
+      return result.rows[0]?.exists || false;
+    } catch (err) {
+      console.error(`Error detectando tipo de schema para ${schemaName}:`, err);
+      return false;
+    }
+  }
+
+  /**
+   * Traduce una consulta SQL escrita para Interchange (ilc_) a Standard (lc_)
+   */
+  translateToStandard(sqlQuery, schemaName, hasFraccion = true) {
+    let translated = sqlQuery;
+
+    // Generar un patrón regex dinámico para soportar tanto los placeholders como el schema real
+    const escapedSchema = schemaName ? schemaName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') : '';
+    const schemaPattern = schemaName
+      ? `(?:\\$\\{schemaName\\}|\\{esquema\\}|"${escapedSchema}"|${escapedSchema})`
+      : `(?:\\$\\{schemaName\\}|\\{esquema\\})`;
+
+    // Helper para reemplazar prefijos de tabla usando el schemaPattern
+    const replaceTable = (fromTable, toTable) => {
+      const regex = new RegExp(`(${schemaPattern})\\.${fromTable}\\b`, 'gi');
+      translated = translated.replace(regex, `$1.${toTable}`);
+    };
+
+    // 1. Reemplazo de prefijos de tablas de ilc_ a lc_/cr_/col_
+    replaceTable('ilc_predio', 'lc_predio');
+    replaceTable('ilc_destinacioneconomicatipo', 'lc_destinacioneconomicatipo');
+    replaceTable('ilc_prediotipo', 'col_unidadadministrativabasicatipo');
+    replaceTable('ilc_condicionprediotipo', 'lc_condicionprediotipo');
+    replaceTable('ilc_derecho', 'lc_derecho');
+    replaceTable('ilc_derechocatastraltipo', 'lc_derechotipo');
+    replaceTable('ilc_interesado', 'cr_interesado');
+    replaceTable('ilc_fuenteadministrativa', 'lc_fuenteadministrativa');
+    replaceTable('ilc_caracteristicasunidadconstruccion', 'cr_caracteristicasunidadconstruccion');
+
+    // 2. Reemplazo de columnas de relaciones
+    translated = translated.replace(/sisantiguo\.ilc_predio_referencia_registral_sistema_antiguo/gi, 'sisantiguo.lc_predio_referencia_registral_sistema_antiguo');
+    translated = translated.replace(/direccion\.ilc_predio_direccion/gi, 'direccion.lc_predio_direccion');
+    translated = translated.replace(/datosph\.ilc_predio/gi, 'datosph.lc_predio');
+    translated = translated.replace(/calificacion\.ilc_caracteristicasunidadconstruccion/gi, 'calificacion.cr_caracteristicasunidadconstruccion');
+
+
+    // 3. Reemplazo de numero_predial_nacional a numero_predial
+    translated = translated.replace(/numero_predial_nacional/gi, 'numero_predial');
+
+    // 4. Reemplazo de espacio_de_nombres as "NroFicha" a n_ficha as "NroFicha"
+    translated = translated.replace(/predio\.espacio_de_nombres\s+as\s+"NroFicha"/gi, 'predio.n_ficha as "NroFicha"');
+    translated = translated.replace(/max\(predio\.espacio_de_nombres\)\s+as\s+"NroFicha"/gi, 'max(predio.n_ficha) as "NroFicha"');
+
+    // 5. Bypass de tabla de unión col_rrrinteresado en Propietarios
+    // Removemos la unión de col_rrrinteresado
+    const rrrJoinRegex = new RegExp(`LEFT\\s+JOIN\\s+(${schemaPattern})\\.col_rrrinteresado\\s+colrinteresado\\s+ON\\s+colrinteresado\\.rrr\\s+=\\s+derecho\\.t_id`, 'gi');
+    translated = translated.replace(rrrJoinRegex, '/* bypassed col_rrrinteresado */');
+    
+    // Conectamos directamente interesado_directo a derecho
+    translated = translated.replace(/ON\s+interesado_directo\.t_id\s+=\s+colrinteresado\.interesado_ilc_interesado/gi, 'ON interesado_directo.t_id = derecho.interesado_cr_interesado');
+    
+    // Conectamos directamente agrupacion a derecho
+    translated = translated.replace(/ON\s+agrupacion\.t_id\s+=\s+colrinteresado\.interesado_cr_agrupacioninteresados/gi, 'ON agrupacion.t_id = derecho.interesado_cr_agrupacioninteresados');
+    
+    // En col_miembros, conectamos a interesado_cr_interesado
+    translated = translated.replace(/miembros\.interesado_ilc_interesado/gi, 'miembros.interesado_cr_interesado');
+
+    // Reemplazo para Derecho/Fracción de Derecho en estándar
+    if (hasFraccion) {
+      translated = translated.replace(
+        /case\s+when\s+miembros\.participacion\s+is\s+not\s+null\s+then\s+miembros\.participacion\s+\*\s+100\s+else\s+100\s+end\s+AS\s+"Derecho"/gi,
+        `CASE 
+           WHEN miembros.participacion IS NOT NULL THEN miembros.participacion * 100 
+           WHEN derecho.fraccion_derecho IS NOT NULL THEN derecho.fraccion_derecho::numeric * 100 
+           ELSE 100 
+         END AS "Derecho"`
+      );
+    }
+
+    // 6. Mock de tabla ilc_usostradicionalesculturalestipo en Construcciones
+    const tradUsoRegex = new RegExp(`left\\s+join\\s+(${schemaPattern})\\.ilc_usostradicionalesculturalestipo\\s+usotrad\\s+on\\s+usotrad\\.t_id\\s*=\\s*caracteristica\\.usos_tradicionales_culturales`, 'gi');
+    translated = translated.replace(tradUsoRegex, 'left join (select null::integer as t_id, null::varchar as ilicode) usotrad on false');
+
+    return translated;
+  }
+
   /**
    * Ejecuta la consulta de Fichas (Predios)
    * @param {string} schemaName - Nombre del schema a consultar
    * @param {object} filters - Filtros opcionales (nroFicha, npn, municipio, etc.)
    */
   async consultarFichas(schemaName, filters = {}) {
-    try {
-      // Validar que el schema existe
-      const schemaExists = await query(`
-        SELECT schema_name 
-        FROM information_schema.schemata 
-        WHERE schema_name = $1
-      `, [schemaName]);
-
-      if (schemaExists.rows.length === 0) {
-        throw new Error(`Schema ${schemaName} no existe`);
-      }
-
-      // Llamar al procedimiento almacenado - especificar todas las 49 columnas
-      const result = await query(`
-        SELECT * FROM consulta_fichas(
-          $1::TEXT,  -- schema_name
-          $2::TEXT,  -- nro_ficha
-          $3::TEXT,  -- npn
-          $4::TEXT,  -- matricula_inmobiliaria
-          $5::INTEGER,  -- limit
-          $6::INTEGER   -- offset
-        ) AS t(
-          t_id BIGINT,
-          id_terreno BIGINT,
-          "NroFicha" TEXT,
-          "NumCedulaCatastral" TEXT,
-          "DepartamentoPredio" TEXT,
-          "MunicipioPredio" TEXT,
-          "MatriculaInmobiliaria" TEXT,
-          circulo TEXT,
-          "Libro" TEXT,
-          "Tomo" TEXT,
-          "Pagina" TEXT,
-          "ModoAdquisicion" TEXT,
-          "PredioLcTipo" TEXT,
-          "CaracteristicaPredio" TEXT,
-          "TipoDireccion" TEXT,
-          "DireccionReal" TEXT,
-          "DireccionNombre" TEXT,
-          "DestinoEcconomico" TEXT,
-          "AreaTotalTerreno" NUMERIC,
-          "AreaTotalConstruida" NUMERIC,
-          "AreaTotalUnidad" NUMERIC,
-          "NpnTerreno" TEXT,
-          "Npn" TEXT,
-          "Zona" TEXT,
-          "Sector" TEXT,
-          "Comuna" TEXT,
-          "Barrio" TEXT,
-          "Manzana o Vereda" TEXT,
-          "Terreno" TEXT,
-          "Condicion" TEXT,
-          "Edificio" TEXT,
-          "Piso" TEXT,
-          "Unidad Predial" TEXT,
-          "AreaTotalLote" TEXT,
-          "AreaLoteComun" TEXT,
-          "AreaLotePrivada" TEXT,
-          "TotalEdificios" TEXT,
-          "UnidadesEnRPH" TEXT,
-          "ApartamentosOCasas" TEXT,
-          locales TEXT,
-          "GarajesCubiertos" TEXT,
-          "GarajesDescubiertos" TEXT,
-          "CuartosUtiles" TEXT,
-          "Radicado" TEXT,
-          "PorcentajeLitigio" TEXT,
-          "CoeficienteCopropiedad" TEXT,
-          "UnidadPredial" TEXT,
-          "Departamento" TEXT,
-          "Municipio" TEXT
-        )
-      `, [
-        schemaName,
-        filters.nroFicha || null,
-        filters.npn || null,
-        filters.matriculaInmobiliaria || null,
-        filters.limit || 1000,
-        filters.offset || 0
-      ]);
-
-      return {
-        success: true,
-        data: result.rows,
-        total: result.rows.length
-      };
-    } catch (error) {
-      console.error(`❌ Error en consultarFichas:`, error);
-      throw error;
-    }
+    return await this.ejecutarConsulta('Fichas', schemaName, filters);
   }
 
   /**
-   * Ejecuta una consulta genérica desde el archivo procesado
+   * Ejecuta una consulta genérica desde las JS constants o el JSON fallback
    */
   async ejecutarConsulta(nombreConsulta, schemaName, filters = {}) {
     try {
-      if (!consultasProcesadas[nombreConsulta]) {
-        throw new Error(`Consulta "${nombreConsulta}" no encontrada`);
+      // 1. Obtener la consulta base. Usar JS constants para Fichas, Propietarios y Construcciones.
+      let sqlQuery = "";
+      if (nombreConsulta === 'Fichas') {
+        sqlQuery = SQL_FICHAS;
+      } else if (nombreConsulta === 'Propietarios') {
+        sqlQuery = SQL_PROPIETARIOS;
+      } else if (nombreConsulta === 'Construcciones') {
+        sqlQuery = SQL_CONSTRUCCIONES;
+      } else {
+        if (!consultasProcesadas[nombreConsulta]) {
+          throw new Error(`Consulta "${nombreConsulta}" no encontrada en fallback ni en JS constants`);
+        }
+        sqlQuery = consultasProcesadas[nombreConsulta];
       }
 
       // Validar que el schema existe
@@ -143,162 +362,184 @@ class ConsultaAlfanumericoService {
         throw new Error(`Schema ${schemaName} no existe`);
       }
 
-      // Obtener la consulta y reemplazar el placeholder del schema
-      let sqlQuery = consultasProcesadas[nombreConsulta];
-      if (!sqlQuery) {
-        throw new Error(`Consulta "${nombreConsulta}" no encontrada. Consultas disponibles: ${Object.keys(consultasProcesadas).join(', ')}`);
-      }
-      
-      // Reemplazar el placeholder del schema (tanto ${schemaName} como {esquema})
-      sqlQuery = sqlQuery.replace(/\$\{schemaName\}/g, this.quoteIdentifier(schemaName));
-      sqlQuery = sqlQuery.replace(/\{esquema\}/g, this.quoteIdentifier(schemaName));
+      // Detectar tipo de schema (Standard LADM-COL o Interchange)
+      const isStandard = await this.isStandardSchema(schemaName);
+      console.log(`🔍 Schema "${schemaName}" detectado como LADM-COL Standard: ${isStandard}`);
 
-      // Contar parámetros existentes en la consulta original
-      const existingParamsMatch = sqlQuery.match(/\$(\d+)/g);
-      let maxParamIndex = 0;
-      if (existingParamsMatch && existingParamsMatch.length > 0) {
-        existingParamsMatch.forEach(match => {
-          const paramNum = parseInt(match.replace('$', ''));
-          if (paramNum > maxParamIndex) {
-            maxParamIndex = paramNum;
-          }
-        });
-        console.log(`📊 Parámetros existentes encontrados: ${maxParamIndex}`);
-      } else {
-        console.log(`📊 No se encontraron parámetros existentes en la consulta`);
+      // Verificar si la columna fraccion_derecho existe en la tabla de derechos de este esquema
+      const tableDerecho = isStandard ? 'lc_derecho' : 'ilc_derecho';
+      const colCheck = await query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_schema = $1 AND table_name = $2 AND column_name = 'fraccion_derecho'
+        );
+      `, [schemaName, tableDerecho]);
+      const hasFraccion = colCheck.rows[0]?.exists || false;
+      console.log(`🔍 Schema "${schemaName}" tiene columna fraccion_derecho en ${tableDerecho}: ${hasFraccion}`);
+
+      // Si es Standard, aplicar traducción ANTES de reemplazar los placeholders
+      if (isStandard) {
+        sqlQuery = this.translateToStandard(sqlQuery, schemaName, hasFraccion);
+      } else if (hasFraccion) {
+        // Si no es Standard pero tiene fraccion_derecho, actualizar el cálculo de Derecho
+        sqlQuery = sqlQuery.replace(
+          /case\s+when\s+miembros\.participacion\s+is\s+not\s+null\s+then\s+miembros\.participacion\s+\*\s+100\s+else\s+100\s+end\s+AS\s+"Derecho"/gi,
+          `CASE 
+             WHEN miembros.participacion IS NOT NULL THEN miembros.participacion * 100 
+             WHEN derecho.fraccion_derecho IS NOT NULL THEN derecho.fraccion_derecho::numeric * 100 
+             ELSE 100 
+           END AS "Derecho"`
+        );
       }
-      
+
+      // Reemplazar placeholders en el SQL original/traducido
+      sqlQuery = sqlQuery.replace(/\$\{schemaName\}/g, schemaName);
+      sqlQuery = sqlQuery.replace(/\{esquema\}/g, schemaName);
+
       // Limpiar la consulta (eliminar punto y coma al final si existe)
       sqlQuery = sqlQuery.trim().replace(/;\s*$/, '');
       
       // Eliminar comentarios SQL (-- comentario) antes de envolver en subconsulta
-      // Esto evita problemas de sintaxis cuando se envuelve la consulta
       sqlQuery = sqlQuery.replace(/--[^\r\n]*/g, '').trim();
       
-      // Inicializar queryParams (array de parámetros para la consulta final)
+      // Determinar nombres de columnas según la consulta
+      let fichaCol = '"NroFicha"';
+      let npnCol = '"Npn"';
+      
+      if (nombreConsulta === 'CalificacionesConstrucciones') {
+        fichaCol = '"NroFicha "';
+      }
+      if (nombreConsulta === 'Propietarios') {
+        npnCol = '"Npn"';
+      }
+
+      // Inicializar queryParams
       const queryParams = [];
       
       // Verificar si hay filtros o paginación para aplicar
-      const hasFilters = filters.nroFicha || filters.npn || filters.matriculaInmobiliaria || filters.documento;
+      const hasFilters = filters.nroFicha || filters.npn || filters.matriculaInmobiliaria || filters.documento || filters.predio_id;
       const hasPagination = filters.limit || filters.offset;
       
       console.log(`📊 Filtros recibidos para ${nombreConsulta}:`, filters);
-      console.log(`📊 ¿Tiene filtros?: ${hasFilters}, ¿Tiene paginación?: ${hasPagination}`);
       
       // Si hay filtros o paginación, envolver la consulta en una subconsulta
-      // Esto evita problemas con parámetros existentes en la consulta original
       if (hasFilters || hasPagination) {
-        // Primero, obtener las columnas disponibles ejecutando la consulta con LIMIT 1
-        // Esto nos permite saber qué columnas existen antes de construir los filtros
-        let testQuery = sqlQuery.trim().replace(/;\s*$/, '');
-        testQuery = testQuery.replace(/--[^\r\n]*/g, '').trim();
-        
-        let availableColumns = new Set();
-        try {
-          // Ejecutar la consulta con LIMIT 1 para obtener una fila de muestra
-          // Nota: Para consultas con GROUP BY, esto puede no devolver resultados, pero aún podemos obtener los metadatos
-          const testResult = await query(`${testQuery} LIMIT 1`, []);
-          
-          // Intentar obtener las columnas de los metadatos primero (más confiable)
-          if (testResult.fields && testResult.fields.length > 0) {
-            availableColumns = new Set(testResult.fields.map(f => f.name));
-            console.log(`📋 Columnas obtenidas de metadatos en ${nombreConsulta}:`, Array.from(availableColumns).join(', '));
-          } else if (testResult.rows.length > 0) {
-            // Si no hay metadatos, usar las claves del primer resultado
-            availableColumns = new Set(Object.keys(testResult.rows[0]));
-            console.log(`📋 Columnas disponibles en ${nombreConsulta}:`, Array.from(availableColumns).join(', '));
-          } else {
-            // Si no hay filas pero la consulta se ejecutó, intentar obtener columnas de otra manera
-            console.log(`⚠️  La consulta de prueba no devolvió filas para ${nombreConsulta}, pero se ejecutó correctamente`);
-          }
-        } catch (testError) {
-          // Si hay un error al obtener las columnas, usar información específica de la consulta
-          console.log(`⚠️  No se pudieron obtener columnas de prueba para ${nombreConsulta}: ${testError.message}`);
-          console.log(`⚠️  Usando enfoque basado en el nombre de la consulta`);
-        }
-        
-        // Envolver la consulta original en una subconsulta
         sqlQuery = `SELECT * FROM (${sqlQuery}) AS consulta_base`;
         
         // Preparar parámetros para los filtros (empezando desde $1)
         const newWhereConditions = [];
         let newParamIndex = 1;
         
-        // Reconstruir condiciones WHERE con parámetros desde $1
-        // Usar múltiples variaciones de nombres de columnas para mayor compatibilidad
+        if (filters.predio_id) {
+          newWhereConditions.push(`consulta_base."predio_t_id" = $${newParamIndex}::BIGINT`);
+          queryParams.push(filters.predio_id);
+          newParamIndex++;
+        }
+
         if (filters.nroFicha) {
-          // Intentar múltiples nombres de columna posibles
           newWhereConditions.push(`(
-            TRIM(consulta_base."NroFicha"::TEXT) = $${newParamIndex} OR 
-            consulta_base."NroFicha" = $${newParamIndex} OR 
-            consulta_base."nroFicha" = $${newParamIndex} OR 
-            consulta_base."Nro_Ficha" = $${newParamIndex} OR
-            consulta_base."NumCedulaCatastral" = $${newParamIndex}
+            TRIM(consulta_base.${fichaCol}::TEXT) = $${newParamIndex} OR 
+            consulta_base.${fichaCol} = $${newParamIndex}
+            ${nombreConsulta === 'Fichas' ? `OR consulta_base."NumCedulaCatastral" = $${newParamIndex}` : ''}
           )`);
           queryParams.push(filters.nroFicha);
           newParamIndex++;
         }
         
         if (filters.npn) {
-          // Construir la condición basada en el nombre de la consulta
-          // Usamos información del archivo CONSULTASALFANUMERICO.txt
-          const npnConditions = [];
-          
-          // Para consultas conocidas, usar directamente la información del archivo
-          // sin depender de la detección de columnas (más confiable)
-          if (nombreConsulta === 'Propietarios') {
-            // Propietarios: usa "Npn " (con espacio al final) según el archivo
-            npnConditions.push(`TRIM(consulta_base."Npn ") LIKE $${newParamIndex}`);
-          } else if (nombreConsulta === 'Construcciones') {
-            // Construcciones: línea 484 - max(predio.numero_predial) as "Npn"
-            // La columna SIEMPRE existe porque está explícitamente en el SELECT
-            // Usar directamente sin verificar detección
-            npnConditions.push(`consulta_base."Npn" LIKE $${newParamIndex}`);
-          } else if (nombreConsulta === 'CalificacionesConstrucciones') {
-            // CalificacionesConstrucciones: tiene tanto "Npn" (línea 662) como "Npn " (línea 665)
-            npnConditions.push(`consulta_base."Npn" LIKE $${newParamIndex}`);
-            npnConditions.push(`TRIM(consulta_base."Npn ") LIKE $${newParamIndex}`);
-          } else {
-            // Para otras consultas desconocidas, usar detección de columnas si está disponible
-            if (availableColumns.has('Npn')) {
-              npnConditions.push(`consulta_base."Npn" LIKE $${newParamIndex}`);
-            }
-            if (availableColumns.has('Npn ')) {
+          if (!['ConstruccionesGenerales', 'Colindantes', 'CartografiaInformacionGrafica'].includes(nombreConsulta)) {
+            const npnConditions = [];
+            npnConditions.push(`consulta_base.${npnCol} LIKE $${newParamIndex}`);
+            if (nombreConsulta === 'CalificacionesConstrucciones') {
               npnConditions.push(`TRIM(consulta_base."Npn ") LIKE $${newParamIndex}`);
             }
-            // Si no tenemos información, intentar "Npn" sin espacio (más común)
-            if (npnConditions.length === 0) {
-              npnConditions.push(`consulta_base."Npn" LIKE $${newParamIndex}`);
+            newWhereConditions.push(`(${npnConditions.join(' OR ')})`);
+          } else {
+            // Si la consulta no tiene la columna Npn, filtrar por EXISTS
+            if (isStandard) {
+              newWhereConditions.push(`EXISTS (
+                SELECT 1 FROM ${schemaName}.lc_predio p
+                WHERE p.n_ficha::varchar = TRIM(COALESCE(consulta_base.${fichaCol}::text, ''))
+                  AND p.numero_predial LIKE $${newParamIndex}
+              )`);
+            } else {
+              newWhereConditions.push(`EXISTS (
+                SELECT 1 FROM ${schemaName}.ilc_predio p
+                WHERE p.espacio_de_nombres::varchar = TRIM(COALESCE(consulta_base.${fichaCol}::text, ''))
+                  AND p.numero_predial_nacional LIKE $${newParamIndex}
+              )`);
             }
           }
-          
-          if (npnConditions.length > 0) {
-            newWhereConditions.push(`(${npnConditions.join(' OR ')})`);
-            queryParams.push(`%${filters.npn}%`);
-            newParamIndex++;
-            console.log(`✅ Filtro de npn aplicado para ${nombreConsulta} usando: ${npnConditions.join(' OR ')}`);
-          } else {
-            console.log(`⚠️  No se pudo construir filtro de npn para ${nombreConsulta}`);
-          }
+          queryParams.push(`%${filters.npn}%`);
+          newParamIndex++;
         }
         
         if (filters.matriculaInmobiliaria) {
-          newWhereConditions.push(`(
-            consulta_base."MatriculaInmobiliaria" = $${newParamIndex} OR 
-            consulta_base."matriculaInmobiliaria" = $${newParamIndex} OR 
-            consulta_base."Matricula_Inmobiliaria" = $${newParamIndex}
-          )`);
+          if (['Fichas', 'Propietarios'].includes(nombreConsulta)) {
+            newWhereConditions.push(`(
+              consulta_base."MatriculaInmobiliaria" = $${newParamIndex}
+            )`);
+          } else {
+            // Filtrar por EXISTS
+            if (isStandard) {
+              newWhereConditions.push(`EXISTS (
+                SELECT 1 FROM ${schemaName}.lc_predio p
+                WHERE p.n_ficha::varchar = TRIM(COALESCE(consulta_base.${fichaCol}::text, ''))
+                  AND p.matricula_inmobiliaria = $${newParamIndex}
+              )`);
+            } else {
+              newWhereConditions.push(`EXISTS (
+                SELECT 1 FROM ${schemaName}.ilc_predio p
+                WHERE p.espacio_de_nombres::varchar = TRIM(COALESCE(consulta_base.${fichaCol}::text, ''))
+                  AND p.matricula_inmobiliaria = $${newParamIndex}
+              )`);
+            }
+          }
           queryParams.push(filters.matriculaInmobiliaria);
           newParamIndex++;
         }
         
         if (filters.documento) {
-          newWhereConditions.push(`(
-            TRIM(consulta_base."Documento"::TEXT) = $${newParamIndex} OR 
-            consulta_base."Documento" = $${newParamIndex} OR 
-            consulta_base."documento" = $${newParamIndex} OR 
-            consulta_base."NumCedulaCatastral" = $${newParamIndex}
-          )`);
+          if (nombreConsulta === 'Propietarios') {
+            newWhereConditions.push(`(
+              TRIM(consulta_base."Documento"::TEXT) = $${newParamIndex} OR 
+              consulta_base."Documento" = $${newParamIndex}
+            )`);
+          } else {
+            // Filtrar por EXISTS asociando el documento al predio por ficha o npn
+            if (isStandard) {
+              newWhereConditions.push(`EXISTS (
+                SELECT 1 FROM ${schemaName}.lc_predio p
+                JOIN ${schemaName}.lc_derecho derecho ON p.t_id = derecho.unidad
+                LEFT JOIN ${schemaName}.cr_interesado intereasdo ON derecho.interesado_cr_interesado = intereasdo.t_id
+                LEFT JOIN ${schemaName}.cr_agrupacioninteresados agrupacion ON derecho.interesado_cr_agrupacioninteresados = agrupacion.t_id
+                LEFT JOIN ${schemaName}.col_miembros cm ON agrupacion.t_id = cm.agrupacion
+                LEFT JOIN ${schemaName}.cr_interesado interesadomiembros ON interesadomiembros.t_id = cm.interesado_cr_interesado
+                WHERE (p.n_ficha::varchar = TRIM(COALESCE(consulta_base.${fichaCol}::text, ''))
+                       ${!['ConstruccionesGenerales', 'Colindantes', 'CartografiaInformacionGrafica'].includes(nombreConsulta) ? `OR p.numero_predial = TRIM(COALESCE(consulta_base.${npnCol}::text, ''))` : ''})
+                  AND (
+                    TRIM(intereasdo.documento_identidad::TEXT) = $${newParamIndex} OR intereasdo.documento_identidad = $${newParamIndex}
+                    OR TRIM(interesadomiembros.documento_identidad::TEXT) = $${newParamIndex} OR interesadomiembros.documento_identidad = $${newParamIndex}
+                  )
+              )`);
+            } else {
+              newWhereConditions.push(`EXISTS (
+                SELECT 1 FROM ${schemaName}.ilc_predio p
+                JOIN ${schemaName}.ilc_derecho derecho ON p.t_id = derecho.unidad
+                LEFT JOIN ${schemaName}.col_rrrinteresado colrinteresado ON colrinteresado.rrr = derecho.t_id
+                LEFT JOIN ${schemaName}.ilc_interesado interesado_directo ON interesado_directo.t_id = colrinteresado.interesado_ilc_interesado
+                LEFT JOIN ${schemaName}.cr_agrupacioninteresados agrupacion ON agrupacion.t_id = colrinteresado.interesado_cr_agrupacioninteresados
+                LEFT JOIN ${schemaName}.col_miembros miembros ON miembros.agrupacion = agrupacion.t_id
+                LEFT JOIN ${schemaName}.ilc_interesado miembro ON miembro.t_id = miembros.interesado_ilc_interesado
+                WHERE (p.espacio_de_nombres::varchar = TRIM(COALESCE(consulta_base.${fichaCol}::text, ''))
+                       ${!['ConstruccionesGenerales', 'Colindantes', 'CartografiaInformacionGrafica'].includes(nombreConsulta) ? `OR p.numero_predial_nacional = TRIM(COALESCE(consulta_base.${npnCol}::text, ''))` : ''})
+                  AND (
+                    TRIM(interesado_directo.documento_identidad::TEXT) = $${newParamIndex} OR interesado_directo.documento_identidad = $${newParamIndex}
+                    OR TRIM(miembro.documento_identidad::TEXT) = $${newParamIndex} OR miembro.documento_identidad = $${newParamIndex}
+                  )
+              )`);
+            }
+          }
           queryParams.push(filters.documento);
           newParamIndex++;
         }
@@ -320,113 +561,199 @@ class ConsultaAlfanumericoService {
           queryParams.push(filters.offset);
           newParamIndex++;
         }
-      } else {
-        // Si no hay filtros, solo limpiar la consulta
-        queryParams.length = 0;
       }
 
       console.log(`📝 Ejecutando consulta: ${nombreConsulta} en schema: ${schemaName}`);
       
-      // Contar parámetros finales en la consulta SQL
-      // Contar parámetros ÚNICOS, no todas las ocurrencias
+      // Contar parámetros únicos para verificar
       const finalParamsMatch = sqlQuery.match(/\$(\d+)/g);
-      
-      // Extraer números únicos de parámetros y ordenarlos
       const paramNumbers = finalParamsMatch 
         ? [...new Set(finalParamsMatch.map(m => parseInt(m.replace('$', ''))))].sort((a, b) => a - b)
         : [];
-      const totalParamsInQuery = paramNumbers.length; // Contar únicos, no todas las ocurrencias
       
-      console.log(`📋 SQL Query (longitud: ${sqlQuery.length} caracteres)`);
-      console.log(`📋 Primeros 1000 caracteres:`);
-      console.log(sqlQuery.substring(0, 1000));
-      console.log(`📋 Últimos 500 caracteres:`);
-      console.log(sqlQuery.substring(Math.max(0, sqlQuery.length - 500)));
-      // Si hay un error de sintaxis, mostrar el área alrededor de la posición del error
-      if (sqlQuery.length > 10000) {
-        console.log(`📋 Área alrededor de posición 10984 (si hay error):`);
-        const startPos = Math.max(0, 10984 - 200);
-        const endPos = Math.min(sqlQuery.length, 10984 + 200);
-        console.log(sqlQuery.substring(startPos, endPos));
-      }
-      // Guardar SQL completo en un archivo temporal para debugging
-      const fs = require('fs');
-      const debugPath = path.join(__dirname, '../../debug_sql_query.sql');
-      fs.writeFileSync(debugPath, sqlQuery, 'utf8');
-      console.log(`📋 SQL completo guardado en: ${debugPath}`);
-      console.log(`\n📋 Parámetros detectados en SQL (${totalParamsInQuery}):`, finalParamsMatch || []);
-      console.log(`📋 Números únicos de parámetros:`, paramNumbers);
-      console.log(`📋 Parámetros a enviar (${queryParams.length}):`, queryParams);
-      console.log(`📋 Parámetros existentes detectados inicialmente: ${maxParamIndex}`);
-      
-      // Verificar que los parámetros estén numerados secuencialmente desde 1
-      const expectedParamCount = paramNumbers.length > 0 ? Math.max(...paramNumbers) : 0;
-      const isSequential = paramNumbers.length === 0 || 
-        (paramNumbers.length === expectedParamCount && 
-         paramNumbers.every((val, idx) => val === idx + 1));
-      
-      if (!isSequential && paramNumbers.length > 0) {
-        console.error(`❌ ERROR: Los parámetros no están numerados secuencialmente!`);
-        console.error(`   Parámetros encontrados:`, paramNumbers);
-        console.error(`   Se esperaba:`, Array.from({length: expectedParamCount}, (_, i) => i + 1));
-        
-        // Renumerar parámetros para que sean secuenciales
-        let newParamIndex = 1;
-        let newSqlQuery = sqlQuery;
-        const newQueryParams = [];
-        
-        // Ordenar los parámetros por su número original
-        const sortedParams = paramNumbers.map((originalNum, idx) => {
-          // Encontrar qué parámetro corresponde a este número
-          const paramValue = queryParams[idx] || null;
-          return { originalNum, newNum: newParamIndex++, value: paramValue };
-        });
-        
-        // Reemplazar los parámetros en el SQL
-        sortedParams.forEach(({ originalNum, newNum }) => {
-          newSqlQuery = newSqlQuery.replace(new RegExp(`\\$${originalNum}\\b`, 'g'), `$${newNum}`);
-        });
-        
-        // Reordenar los parámetros
-        sortedParams.forEach(({ value }) => {
-          newQueryParams.push(value);
-        });
-        
-        console.log(`📝 SQL renumerado (primeros 500 caracteres):`);
-        console.log(newSqlQuery.substring(0, 500));
-        console.log(`📋 Nuevos parámetros (${newQueryParams.length}):`, newQueryParams);
-        
-        sqlQuery = newSqlQuery;
-        queryParams.length = 0;
-        queryParams.push(...newQueryParams);
-      }
-      
-      // Verificar que el número de parámetros coincida
-      // Contar parámetros ÚNICOS, no todas las ocurrencias
-      const finalCheck = sqlQuery.match(/\$(\d+)/g);
-      const uniqueParamNumbers = finalCheck 
-        ? [...new Set(finalCheck.map(m => parseInt(m.replace('$', ''))))].sort((a, b) => a - b)
-        : [];
-      const finalParamCount = uniqueParamNumbers.length;
-      
-      if (finalParamCount !== queryParams.length) {
-        console.error(`❌ ERROR: Número de parámetros no coincide después de renumerar!`);
-        console.error(`   SQL tiene ${finalParamCount} parámetros únicos:`, uniqueParamNumbers);
-        console.error(`   Pero estamos enviando ${queryParams.length} parámetros:`, queryParams);
-        throw new Error(`Número de parámetros no coincide: SQL tiene ${finalParamCount} parámetros únicos, pero se están enviando ${queryParams.length} parámetros`);
-      }
-      
-      console.log(`✅ Parámetros validados: ${finalParamCount} parámetros únicos en SQL, ${queryParams.length} valores a enviar`);
-      
+      console.log(`📋 Parámetros detectados en SQL:`, paramNumbers);
+      console.log(`📋 Parámetros a enviar:`, queryParams);
+
       const result = await query(sqlQuery, queryParams);
-      
-      console.log(`✅ Consulta ${nombreConsulta} ejecutada exitosamente. Filas devueltas: ${result.rows.length}`);
-      if (result.rows.length === 0) {
-        console.log(`⚠️  La consulta ${nombreConsulta} no devolvió resultados. Esto puede ser normal si no hay datos que coincidan con los filtros.`);
-        console.log(`📋 Filtros aplicados:`, filters);
-        console.log(`📋 SQL Query final (primeros 500 caracteres):`, sqlQuery.substring(0, Math.min(500, sqlQuery.length)));
-      } else {
-        console.log(`✅ Primeras columnas del resultado:`, Object.keys(result.rows[0] || {}).slice(0, 10));
+      console.log(`✅ Consulta ${nombreConsulta} ejecutada exitosamente. Filas: ${result.rows.length}`);
+
+      // Si es la consulta de Fichas y tenemos filas, cargar la geometría del terreno para cada predio
+      if (nombreConsulta === 'Fichas' && result.rows.length > 0) {
+        for (const row of result.rows) {
+          const predioId = row.predio_t_id;
+          if (predioId) {
+            try {
+              // Buscar nombre de la tabla de terrenos en el esquema
+              const terrainTableResult = await query(
+                `SELECT table_name FROM information_schema.tables 
+                 WHERE table_schema = $1 
+                   AND (table_name = 'cr_terreno' OR table_name = 'lc_terreno' OR table_name = 'ilc_terreno') 
+                 LIMIT 1`,
+                [schemaName]
+              );
+              if (terrainTableResult.rows.length > 0) {
+                const terrainTableName = terrainTableResult.rows[0].table_name;
+                
+                // Buscar en col_uebaunit si existe la relación
+                const uebaunitResult = await query(
+                  `SELECT table_name FROM information_schema.tables 
+                   WHERE table_schema = $1 AND table_name = 'col_uebaunit' LIMIT 1`,
+                  [schemaName]
+                );
+                
+                let geomRes = null;
+                if (uebaunitResult.rows.length > 0) {
+                  // Verificar cuáles columnas tiene col_uebaunit para el link del terreno
+                  const uebColsResult = await query(
+                    `SELECT column_name FROM information_schema.columns 
+                     WHERE table_schema = $1 AND table_name = 'col_uebaunit'`,
+                    [schemaName]
+                  );
+                  const uebCols = new Set(uebColsResult.rows.map(r => r.column_name));
+                  
+                  let linkCol = 'ue_cr_terreno';
+                  if (uebCols.has('ue_lc_terreno')) {
+                    linkCol = 'ue_lc_terreno';
+                  } else if (uebCols.has('ue_ilc_terreno')) {
+                    linkCol = 'ue_ilc_terreno';
+                  } else if (uebCols.has('ue_terreno')) {
+                    linkCol = 'ue_terreno';
+                  }
+                  
+                  geomRes = await query(
+                    `SELECT ST_AsGeoJSON(ST_Transform(ST_CurveToLine(t.geometria), 4326)) as geometry_geojson
+                     FROM "${schemaName}"."${terrainTableName}" t
+                     JOIN "${schemaName}".col_uebaunit ueb ON ueb.${linkCol} = t.t_id
+                     WHERE ueb.baunit = $1::bigint AND t.geometria IS NOT NULL LIMIT 1`,
+                    [predioId]
+                  );
+
+                  // Fallback 1: Copropiedad (matriz)
+                  if (!geomRes || geomRes.rows.length === 0 || !geomRes.rows[0].geometry_geojson) {
+                    const copropiedadResult = await query(
+                      `SELECT table_name FROM information_schema.tables 
+                       WHERE table_schema = $1 AND (table_name = 'cr_predio_copropiedad' OR table_name = 'lc_predio_copropiedad') LIMIT 1`,
+                      [schemaName]
+                    );
+                    if (copropiedadResult.rows.length > 0) {
+                      const copTableName = copropiedadResult.rows[0].table_name;
+                      geomRes = await query(
+                        `SELECT ST_AsGeoJSON(ST_Transform(ST_CurveToLine(t.geometria), 4326)) as geometry_geojson
+                         FROM "${schemaName}"."${terrainTableName}" t
+                         JOIN "${schemaName}".col_uebaunit ueb ON ueb.${linkCol} = t.t_id
+                         WHERE ueb.baunit = (SELECT matriz FROM "${schemaName}"."${copTableName}" WHERE unidad_predial = $1::bigint LIMIT 1) 
+                           AND t.geometria IS NOT NULL LIMIT 1`,
+                        [predioId]
+                      );
+                    }
+                  }
+
+                  // Fallback 2: Prefix matching
+                  if (!geomRes || geomRes.rows.length === 0 || !geomRes.rows[0].geometry_geojson) {
+                    geomRes = await query(
+                      `SELECT ST_AsGeoJSON(ST_Transform(ST_CurveToLine(geometria), 4326)) as geometry_geojson
+                       FROM "${schemaName}"."${terrainTableName}" 
+                       WHERE SUBSTRING(local_id, 1, 21) = SUBSTRING(($1::text), 1, 21) 
+                         AND geometria IS NOT NULL LIMIT 1`,
+                      [row.Npn || '']
+                    );
+                  }
+
+                  // Fallback 3: Construction
+                  if (!geomRes || geomRes.rows.length === 0 || !geomRes.rows[0].geometry_geojson) {
+                    const constTableResult = await query(
+                      `SELECT table_name FROM information_schema.tables 
+                       WHERE table_schema = $1 
+                         AND (table_name = 'cr_unidadconstruccion' OR table_name = 'lc_construccion' OR table_name = 'ilc_construccion') 
+                       LIMIT 1`,
+                      [schemaName]
+                    );
+                    if (constTableResult.rows.length > 0) {
+                      const constTableName = constTableResult.rows[0].table_name;
+                      let constLinkCol = 'ue_cr_unidadconstruccion';
+                      if (uebCols.has('ue_lc_construccion')) {
+                        constLinkCol = 'ue_lc_construccion';
+                      } else if (uebCols.has('ue_ilc_construccion')) {
+                        constLinkCol = 'ue_ilc_construccion';
+                      } else if (uebCols.has('ue_unidadconstruccion')) {
+                        constLinkCol = 'ue_unidadconstruccion';
+                      }
+
+                      geomRes = await query(
+                        `SELECT ST_AsGeoJSON(ST_Transform(ST_CurveToLine(c.geometria), 4326)) as geometry_geojson
+                         FROM "${schemaName}"."${constTableName}" c
+                         JOIN "${schemaName}".col_uebaunit ueb ON ueb.${constLinkCol} = c.t_id
+                         WHERE ueb.baunit = $1::bigint AND c.geometria IS NOT NULL LIMIT 1`,
+                        [predioId]
+                      );
+                    }
+                  }
+                } else {
+                  // Fallback: por local_id / npn
+                  geomRes = await query(
+                    `SELECT ST_AsGeoJSON(ST_Transform(ST_CurveToLine(geometria), 4326)) as geometry_geojson
+                     FROM "${schemaName}"."${terrainTableName}" 
+                     WHERE (local_id = $1 OR local_id = $2) AND geometria IS NOT NULL LIMIT 1`,
+                    [row.local_id || row.NroFicha, row.Npn]
+                  );
+                }
+                
+                if (geomRes && geomRes.rows.length > 0 && geomRes.rows[0].geometry_geojson) {
+                  row.geometry = JSON.parse(geomRes.rows[0].geometry_geojson);
+                }
+
+                // Buscar construcciones asociadas
+                let constructionGeoms = [];
+                const constTableResult = await query(
+                  `SELECT table_name FROM information_schema.tables 
+                   WHERE table_schema = $1 
+                     AND (table_name = 'cr_unidadconstruccion' OR table_name = 'lc_construccion' OR table_name = 'ilc_construccion') 
+                   LIMIT 1`,
+                  [schemaName]
+                );
+                if (constTableResult.rows.length > 0) {
+                  const constTableName = constTableResult.rows[0].table_name;
+                  
+                  if (uebaunitResult.rows.length > 0) {
+                    const uebColsResult = await query(
+                      `SELECT column_name FROM information_schema.columns 
+                       WHERE table_schema = $1 AND table_name = 'col_uebaunit'`,
+                      [schemaName]
+                    );
+                    const uebCols = new Set(uebColsResult.rows.map(r => r.column_name));
+                    
+                    let constLinkCol = 'ue_cr_unidadconstruccion';
+                    if (uebCols.has('ue_lc_construccion')) {
+                      constLinkCol = 'ue_lc_construccion';
+                    } else if (uebCols.has('ue_ilc_construccion')) {
+                      constLinkCol = 'ue_ilc_construccion';
+                    } else if (uebCols.has('ue_unidadconstruccion')) {
+                      constLinkCol = 'ue_unidadconstruccion';
+                    }
+                    
+                    const constGeomRes = await query(
+                      `SELECT c.t_id, c.etiqueta, c.local_id, ST_AsGeoJSON(ST_Transform(ST_CurveToLine(c.geometria), 4326)) as geometry_geojson
+                       FROM "${schemaName}"."${constTableName}" c
+                       JOIN "${schemaName}".col_uebaunit ueb ON ueb.${constLinkCol} = c.t_id
+                       WHERE ueb.baunit = $1::bigint AND c.geometria IS NOT NULL`,
+                      [predioId]
+                    );
+                    
+                    constructionGeoms = constGeomRes.rows.map(r => ({
+                      t_id: r.t_id,
+                      etiqueta: r.etiqueta,
+                      local_id: r.local_id,
+                      geometry: JSON.parse(r.geometry_geojson)
+                    }));
+                  }
+                }
+                row.construction_geometries = constructionGeoms;
+              }
+            } catch (geomErr) {
+              console.warn(`Error al recuperar geometría para ficha ${predioId}:`, geomErr.message);
+            }
+          }
+        }
       }
 
       return {
@@ -436,26 +763,7 @@ class ConsultaAlfanumericoService {
       };
 
     } catch (error) {
-      // Si el error es sobre una columna que no existe, intentar ejecutar sin ese filtro
-      if (error.code === '42703' && error.message.includes('no existe la columna')) {
-        console.error(`❌ Error: Columna no existe en ${nombreConsulta}`);
-        console.error(`📋 Mensaje:`, error.message);
-        console.error(`📋 Intentando ejecutar consulta sin filtros problemáticos...`);
-        
-        // Si el error es sobre npn, intentar ejecutar sin ese filtro
-        if (filters.npn && error.message.includes('Npn')) {
-          console.log(`⚠️  Reintentando consulta sin filtro de npn...`);
-          const filtersWithoutNpn = { ...filters };
-          delete filtersWithoutNpn.npn;
-          return await this.ejecutarConsulta(nombreConsulta, schemaName, filtersWithoutNpn);
-        }
-      }
-      
       console.error(`❌ Error en ejecutarConsulta (${nombreConsulta}):`, error);
-      console.error(`📋 Schema: ${schemaName}`);
-      console.error(`📋 Filtros:`, filters);
-      console.error(`📋 Mensaje de error:`, error.message);
-      console.error(`📋 Stack:`, error.stack);
       throw error;
     }
   }
@@ -479,6 +787,13 @@ class ConsultaAlfanumericoService {
    */
   async consultarCalificacionesConstrucciones(schemaName, filters = {}) {
     return await this.ejecutarConsulta('CalificacionesConstrucciones', schemaName, filters);
+  }
+
+  /**
+   * Ejecuta la consulta de CalificacionesDetalle
+   */
+  async consultarCalificacionesDetalle(schemaName, filters = {}) {
+    return await this.ejecutarConsulta('CalificacionesDetalle', schemaName, filters);
   }
 
   /**
@@ -511,4 +826,3 @@ class ConsultaAlfanumericoService {
 }
 
 module.exports = new ConsultaAlfanumericoService();
-
