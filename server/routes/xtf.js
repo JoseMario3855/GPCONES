@@ -19,7 +19,10 @@ const {
   exportXTF,
   uploadExcel,
   importExcel,
-  excelToXTF
+  excelToXTF,
+  updateGeometriesGDB,
+  uploadGDB,
+  downloadGDB
 } = require('../controllers/xtfController');
 const { canExportXTF } = require('../middleware/auth');
 
@@ -48,6 +51,14 @@ router.post('/excel-to-xtf',
   authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
   uploadExcel.single('excel_file'),
   excelToXTF
+);
+
+// Consolidar geometrías de terrenos desde capas GDB importadas
+// POST /api/xtf/update-geometries-gdb
+router.post('/update-geometries-gdb',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  uploadGDB.single('gdb_file'),
+  updateGeometriesGDB
 );
 
 // Historia 6: Validación de modelos ILI
@@ -753,6 +764,12 @@ router.get('/upload/:upload_id/logs',
 router.get('/schemas',
   authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
   getSchemas
+);
+
+// GET /api/xtf/schemas/:schema_name/download-gdb - Descargar GDB
+router.get('/schemas/:schema_name/download-gdb',
+  authorizeRole(['Administrador del Sistema', 'Revisión de Calidad']),
+  downloadGDB
 );
 
 // GET /api/xtf/schemas/:schema_name/stats - Obtener estadísticas de un schema

@@ -180,9 +180,8 @@ SELECT
     else 100
   end AS "Derecho",
   disponibilidad.ilicode as "Disponibilidad"
-FROM \${schemaName}.col_rrrfuente colrfuente
-LEFT JOIN \${schemaName}.ilc_derecho derecho ON derecho.t_id = colrfuente.rrr
-LEFT JOIN \${schemaName}.ilc_predio predio ON predio.t_id = derecho.unidad
+FROM \${schemaName}.ilc_derecho derecho
+INNER JOIN \${schemaName}.ilc_predio predio ON predio.t_id = derecho.unidad
 LEFT JOIN \${schemaName}.ilc_derechocatastraltipo tipoderecho ON tipoderecho.t_id = derecho.tipo
 LEFT JOIN \${schemaName}.col_rrrinteresado colrinteresado ON colrinteresado.rrr = derecho.t_id
 -- Rama 1: interesado directo
@@ -195,9 +194,10 @@ LEFT JOIN \${schemaName}.col_grupointeresadotipo tipogrupo ON tipogrupo.t_id = a
 LEFT JOIN \${schemaName}.col_miembros miembros ON miembros.agrupacion = agrupacion.t_id
 LEFT JOIN \${schemaName}.ilc_interesado miembro ON miembro.t_id = miembros.interesado_ilc_interesado
 LEFT JOIN \${schemaName}.cr_documentotipo tipodoc_miembro ON tipodoc_miembro.t_id = miembro.tipo_documento
-join \${schemaName}.ilc_fuenteadministrativa fuente on fuente.t_id=colrfuente.fuente_administrativa 
-left join \${schemaName}.col_fuenteadministrativatipo fuentetipo on fuentetipo.t_id=fuente.tipo
-left join \${schemaName}.col_estadodisponibilidadtipo disponibilidad on disponibilidad.t_id=fuente.estado_disponibilidad 
+LEFT JOIN \${schemaName}.col_rrrfuente colrfuente ON colrfuente.rrr = derecho.t_id
+LEFT JOIN \${schemaName}.ilc_fuenteadministrativa fuente ON fuente.t_id = colrfuente.fuente_administrativa 
+LEFT JOIN \${schemaName}.col_fuenteadministrativatipo fuentetipo ON fuentetipo.t_id = fuente.tipo
+LEFT JOIN \${schemaName}.col_estadodisponibilidadtipo disponibilidad ON disponibilidad.t_id = fuente.estado_disponibilidad
 `;
 
 const SQL_CONSTRUCCIONES = `

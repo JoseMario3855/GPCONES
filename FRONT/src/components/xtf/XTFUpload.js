@@ -27,7 +27,8 @@ import {
   ExclamationCircleOutlined,
   InfoCircleOutlined,
   DeleteOutlined,
-  EyeOutlined
+  EyeOutlined,
+  DownloadOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 
@@ -526,6 +527,37 @@ const XTFUpload = () => {
                     }}
                   >
                     Integrar
+                  </Button>,
+                  <Button
+                    type="link"
+                    icon={<DownloadOutlined />}
+                    onClick={async () => {
+                      const hide = message.loading('Preparando descarga de Geodatabase...', 0);
+                      try {
+                        const response = await axios({
+                          url: `/api/xtf/schemas/${schema.schema_name}/download-gdb`,
+                          method: 'GET',
+                          responseType: 'blob',
+                        });
+                        
+                        const url = window.URL.createObjectURL(new Blob([response.data]));
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.setAttribute('download', `${schema.schema_name}_GDB.zip`);
+                        document.body.appendChild(link);
+                        link.click();
+                        link.remove();
+                        window.URL.revokeObjectURL(url);
+                        message.success('Descarga de GDB iniciada con éxito');
+                      } catch (error) {
+                        console.error('Error al descargar GDB:', error);
+                        message.error('Error al exportar y descargar el archivo GDB. Verifique que el esquema contenga tablas espaciales.');
+                      } finally {
+                        hide();
+                      }
+                    }}
+                  >
+                    Descargar GDB
                   </Button>,
                   <Button
                     type="link"

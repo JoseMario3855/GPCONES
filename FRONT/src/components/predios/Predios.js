@@ -1336,6 +1336,7 @@ const Predios = () => {
           typeOptions={typeOptions}
           selectedSchema={selectedSchema}
           onRefresh={() => reloadDetails(selectedPredio.t_id || selectedPredio.id, selectedPredio.npn)}
+          allPredios={predios}
         />
       )}
 

@@ -10,7 +10,8 @@ import {
   Spin,
   Alert,
   Empty,
-  Tag
+  Tag,
+  message
 } from 'antd';
 import {
   EnvironmentOutlined,
@@ -31,11 +32,20 @@ const MunicipioSelector = () => {
   const [schemasAsociados, setSchemasAsociados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingSchemas, setLoadingSchemas] = useState(false);
+  const [noSchemasSystemWide, setNoSchemasSystemWide] = useState(false);
+  const [availableDbSchemas, setAvailableDbSchemas] = useState([]);
+  const [selectedSchemaName, setSelectedSchemaName] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     loadMunicipiosConSchemas();
   }, []);
+
+  useEffect(() => {
+    if (noSchemasSystemWide) {
+      loadDbSchemas();
+    }
+  }, [noSchemasSystemWide]);
 
   const loadMunicipiosConSchemas = async () => {
     try {
@@ -47,14 +57,32 @@ const MunicipioSelector = () => {
       if (response.data.success) {
         // Filtrar solo municipios que tienen schemas asociados
         const municipiosConSchemas = response.data.data.filter(
-          m => m.total_schemas > 0
+          m => parseInt(m.total_schemas, 10) > 0
         );
-        setMunicipios(municipiosConSchemas);
+
+        if (municipiosConSchemas.length === 0) {
+          setNoSchemasSystemWide(true);
+          setMunicipios(response.data.data); // Mostrar todos los municipios activos
+        } else {
+          setNoSchemasSystemWide(false);
+          setMunicipios(municipiosConSchemas);
+        }
       }
     } catch (error) {
       console.error('Error cargando municipios:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadDbSchemas = async () => {
+    try {
+      const response = await axios.get('/api/municipios/schemas-disponibles');
+      if (response.data.success) {
+        setAvailableDbSchemas(response.data.data || []);
+      }
+    } catch (error) {
+      console.error('Error cargando schemas en Selector:', error);
     }
   };
 
@@ -64,11 +92,16 @@ const MunicipioSelector = () => {
       const municipio = municipios.find(m => m.id === municipioId);
       setSelectedMunicipio(municipio);
 
-      // Cargar schemas asociados al municipio
-      const response = await axios.get(`/api/municipios/${municipioId}`);
-      if (response.data.success && response.data.data.schemas) {
-        const schemasActivos = response.data.data.schemas.filter(s => s.activo);
-        setSchemasAsociados(schemasActivos);
+      if (noSchemasSystemWide) {
+        setSchemasAsociados([]);
+        setSelectedSchemaName('public'); // Default a 'public'
+      } else {
+        // Cargar schemas asociados al municipio
+        const response = await axios.get(`/api/municipios/${municipioId}`);
+        if (response.data.success && response.data.data.schemas) {
+          const schemasActivos = response.data.data.schemas.filter(s => s.activo);
+          setSchemasAsociados(schemasActivos);
+        }
       }
     } catch (error) {
       console.error('Error cargando schemas:', error);
@@ -78,23 +111,45 @@ const MunicipioSelector = () => {
     }
   };
 
-  const handleConfirm = () => {
-    if (selectedMunicipio && schemasAsociados.length > 0) {
-      // Si hay múltiples schemas, usar el primero (o se puede mejorar para seleccionar)
-      const schemaSeleccionado = schemasAsociados[0].schema_name;
-      
-      // Guardar en el contexto de autenticación
-      const municipioData = {
-        municipio_id: selectedMunicipio.id,
-        municipio_nombre: selectedMunicipio.nombre,
-        municipio_codigo_dane: selectedMunicipio.codigo_dane,
-        schema_name: schemaSeleccionado
-      };
-      
-      seleccionarMunicipio(municipioData);
+  const handleConfirm = async () => {
+    if (selectedMunicipio) {
+      let schemaSeleccionado = null;
 
-      // Redirigir al dashboard
-      navigate('/');
+      if (noSchemasSystemWide) {
+        schemaSeleccionado = selectedSchemaName || 'public';
+        
+        // Intentar registrar la asociación en el backend
+        try {
+          await axios.post('/api/municipios/asociar-schema', {
+            municipio_id: selectedMunicipio.id,
+            schema_name: schemaSeleccionado,
+            descripcion: 'Asociación inicial automática desde selector'
+          });
+        } catch (e) {
+          console.warn('No se pudo guardar la asociación en BD (tal vez ya existe o no es admin), procediendo localmente:', e.message);
+        }
+      } else {
+        if (schemasAsociados.length > 0) {
+          schemaSeleccionado = schemasAsociados[0].schema_name;
+        }
+      }
+
+      if (schemaSeleccionado) {
+        const municipioData = {
+          municipio_id: selectedMunicipio.id,
+          municipio_nombre: selectedMunicipio.nombre,
+          municipio_codigo_dane: selectedMunicipio.codigo_dane,
+          schema_name: schemaSeleccionado
+        };
+        
+        seleccionarMunicipio(municipioData);
+
+        // Redirigir al dashboard y refrescar contexto
+        navigate('/');
+        window.location.reload();
+      } else {
+        message.warning('Por favor seleccione un esquema para continuar');
+      }
     }
   };
 
@@ -107,23 +162,6 @@ const MunicipioSelector = () => {
         minHeight: '100vh' 
       }}>
         <Spin size="large" tip="Cargando municipios..." />
-      </div>
-    );
-  }
-
-  if (municipios.length === 0) {
-    return (
-      <div style={{ padding: '50px' }}>
-        <Card>
-          <Empty
-            description="No hay municipios con schemas asociados"
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-          >
-            <Text type="secondary">
-              Contacta al administrador para asociar schemas a municipios.
-            </Text>
-          </Empty>
-        </Card>
       </div>
     );
   }
@@ -153,12 +191,21 @@ const MunicipioSelector = () => {
             </Text>
           </div>
 
-          <Alert
-            message="Municipios disponibles"
-            description={`${municipios.length} municipio(s) con schemas asociados`}
-            type="info"
-            showIcon
-          />
+          {noSchemasSystemWide ? (
+            <Alert
+              message="Configuración Inicial de Municipio"
+              description="No hay municipios con esquemas de base de datos asociados todavía. Seleccione cualquier municipio de la lista y elija 'public' (o un esquema existente) para habilitar el acceso e iniciar la importación de datos."
+              type="warning"
+              showIcon
+            />
+          ) : (
+            <Alert
+              message="Municipios disponibles"
+              description={`${municipios.length} municipio(s) con schemas asociados`}
+              type="info"
+              showIcon
+            />
+          )}
 
           <div>
             <Text strong>Municipio:</Text>
@@ -175,13 +222,7 @@ const MunicipioSelector = () => {
             >
               {municipios.map(municipio => (
                 <Option key={municipio.id} value={municipio.id}>
-                  <Space>
-                    <EnvironmentOutlined />
-                    <Text strong>{municipio.nombre}</Text>
-                    <Text type="secondary">({municipio.departamento})</Text>
-                    <Text code>{municipio.codigo_dane}</Text>
-                    <Tag color="blue">{municipio.total_schemas} schema(s)</Tag>
-                  </Space>
+                  {`${municipio.nombre} (${municipio.departamento}) - ${municipio.codigo_dane}`}
                 </Option>
               ))}
             </Select>
@@ -206,7 +247,25 @@ const MunicipioSelector = () => {
             </Card>
           )}
 
-          {loadingSchemas ? (
+          {noSchemasSystemWide && selectedMunicipio ? (
+            <div>
+              <Text strong>Esquema de Base de Datos:</Text>
+              <Select
+                style={{ width: '100%', marginTop: '8px' }}
+                placeholder="Seleccione un esquema"
+                size="large"
+                value={selectedSchemaName}
+                onChange={(val) => setSelectedSchemaName(val)}
+              >
+                <Option value="public">public (Esquema por defecto/vacío)</Option>
+                {availableDbSchemas.map(s => (
+                  <Option key={s.schema_name} value={s.schema_name}>
+                    {s.schema_name} ({s.total_tables} tablas)
+                  </Option>
+                ))}
+              </Select>
+            </div>
+          ) : loadingSchemas ? (
             <div style={{ textAlign: 'center' }}>
               <Spin tip="Cargando schemas..." />
             </div>
@@ -258,7 +317,7 @@ const MunicipioSelector = () => {
             block
             icon={<CheckCircleOutlined />}
             onClick={handleConfirm}
-            disabled={!selectedMunicipio || schemasAsociados.length === 0}
+            disabled={!selectedMunicipio || (noSchemasSystemWide ? !selectedSchemaName : schemasAsociados.length === 0)}
           >
             Continuar con este Municipio
           </Button>

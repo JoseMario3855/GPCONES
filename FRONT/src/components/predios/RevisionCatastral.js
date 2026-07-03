@@ -21,10 +21,10 @@ const RevisionCatastral = () => {
   const [isRevisionModalVisible, setIsRevisionModalVisible] = useState(false);
   const [form] = Form.useForm();
   
-  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3002/api';
+  const API_URL = '/api';
 
   const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('gpcones_token');
     return {
       headers: { Authorization: `Bearer ${token}` }
     };

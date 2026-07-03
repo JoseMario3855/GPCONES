@@ -3,6 +3,8 @@ import axios from "axios";
 import { message } from "antd";
 import { MapContainer, TileLayer, GeoJSON, useMap } from "react-leaflet";
 import L from "leaflet";
+import { mapPredio } from "./predioMapper";
+
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const NPN_SEGMENTS = [
@@ -1222,7 +1224,7 @@ function TabCalificaciones({
 }
 
 // ─── Component: ChangeView ──────────────────────────────────────────────────
-function ChangeView({ geometry }) {
+function ChangeView({ geometry, fallbackGeometries = [] }) {
   const map = useMap();
   useEffect(() => {
     if (geometry) {
@@ -1230,18 +1232,38 @@ function ChangeView({ geometry }) {
         const layer = L.geoJSON(geometry);
         const bounds = layer.getBounds();
         if (bounds.isValid()) {
-          map.fitBounds(bounds, { padding: [40, 40], maxZoom: 18 });
+          map.fitBounds(bounds, { padding: [40, 40], maxZoom: 21 });
+          return;
         }
       } catch (err) {
         console.error("Error al ajustar vista del mapa:", err);
       }
     }
-  }, [geometry, map]);
+
+    // Zoom fallback to the first available adjacent geometry if current has none
+    if (fallbackGeometries && fallbackGeometries.length > 0) {
+      for (const fg of fallbackGeometries) {
+        if (fg) {
+          try {
+            const layer = L.geoJSON(fg);
+            const bounds = layer.getBounds();
+            if (bounds.isValid()) {
+              map.fitBounds(bounds, { padding: [40, 40], maxZoom: 19 });
+              break;
+            }
+          } catch (err) {
+            console.error("Error al ajustar vista del mapa con geometría colindante:", err);
+          }
+        }
+      }
+    }
+  }, [geometry, fallbackGeometries, map]);
   return null;
 }
 
 // ─── Tab: UBICACION ──────────────────────────────────────────────────────────
-function TabUbicacion({ predio }) {
+function TabUbicacion({ predio, allPredios = [] }) {
+  const [showBaseMap, setShowBaseMap] = useState(true);
   const hasGeom = predio.geometry && 
                   predio.geometry.coordinates && 
                   predio.geometry.coordinates.length > 0;
@@ -1251,10 +1273,18 @@ function TabUbicacion({ predio }) {
 
   const geojsonStyle = {
     color: "#0a5c3e",
-    weight: 3,
-    opacity: 0.85,
+    weight: 3.5,
+    opacity: 0.95,
     fillColor: "#d6f0e7",
     fillOpacity: 0.45,
+  };
+
+  const otherGeojsonStyle = {
+    color: "#6c757d",
+    weight: 1.5,
+    opacity: 0.6,
+    fillColor: "#ced4da",
+    fillOpacity: 0.25,
   };
 
   const constructionStyle = {
@@ -1264,6 +1294,17 @@ function TabUbicacion({ predio }) {
     fillColor: "#fce0d4",
     fillOpacity: 0.65,
   };
+
+  // Filter other predios that have geometries
+  const otherPrediosWithGeom = (allPredios || [])
+    .filter(p => {
+      const isCurrent = (p.id || p.t_id) === (predio.id || predio.t_id) || (p.npn && p.npn === predio.npn);
+      return !isCurrent;
+    })
+    .map(p => {
+      return p.geometry ? p : { ...p, ...mapPredio(p) };
+    })
+    .filter(p => p.geometry && p.geometry.coordinates && p.geometry.coordinates.length > 0);
 
   return (
     <div style={{ padding: "18px 20px 4px", display: "flex", flexDirection: "column", minHeight: 500 }}>
@@ -1296,24 +1337,84 @@ function TabUbicacion({ predio }) {
         position: "relative",
         boxShadow: "0 4px 12px rgba(0,0,0,0.03)"
       }}>
+        {/* Botón para activar/desactivar el mapa base */}
+        <button
+          onClick={() => setShowBaseMap(v => !v)}
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 10,
+            zIndex: 1000,
+            background: "#fff",
+            border: "1.5px solid #ccc",
+            borderRadius: 6,
+            padding: "6px 12px",
+            fontSize: "12px",
+            fontWeight: "bold",
+            color: "#333",
+            cursor: "pointer",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            outline: "none",
+            transition: "all 0.15s ease-in-out"
+          }}
+          onMouseOver={e => {
+            e.currentTarget.style.background = "#f4f4f4";
+            e.currentTarget.style.borderColor = "#999";
+          }}
+          onMouseOut={e => {
+            e.currentTarget.style.background = "#fff";
+            e.currentTarget.style.borderColor = "#ccc";
+          }}
+        >
+          🗺️ {showBaseMap ? "Ocultar Calles y Nombres" : "Mostrar Calles y Nombres"}
+        </button>
+
         <MapContainer
           center={defaultCenter}
           zoom={defaultZoom}
-          style={{ height: "100%", width: "100%", zIndex: 1 }}
+          maxZoom={22}
+          style={{ height: "100%", width: "100%", zIndex: 1, background: "#f8f9fa" }}
         >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          {showBaseMap && (
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              maxZoom={22}
+              maxNativeZoom={19}
+            />
+          )}
+
+          {/* Render adjacent properties */}
+          {otherPrediosWithGeom.map((op, index) => (
+            <GeoJSON
+              key={`other-predio-${op.id || op.t_id || index}`}
+              data={op.geometry}
+              style={otherGeojsonStyle}
+              onEachFeature={(feature, layer) => {
+                layer.bindPopup(`
+                  <div style="font-family: inherit; font-size: 12px; color: #1a1a18; padding: 4px;">
+                    <strong style="color: #6c757d; font-size: 13px;">Predio Colindante</strong><br/>
+                    <span style="color: #6a6860; font-size: 11px;">NPN:</span> <code style="font-weight: 700; color: #1a1a18;">${op.npn || 'Sin NPN'}</code><br/>
+                    <span style="color: #6a6860; font-size: 11px;">Ficha:</span> <code style="font-weight: 700; color: #1a1a18;">${op.espacio_de_nombres || 'Sin Ficha'}</code>
+                  </div>
+                `);
+              }}
+            />
+          ))}
+
           {hasGeom && (
             <>
+              {/* Selected highlighted property */}
               <GeoJSON 
                 data={predio.geometry} 
                 style={geojsonStyle}
                 onEachFeature={(feature, layer) => {
                   layer.bindPopup(`
                     <div style="font-family: inherit; font-size: 12px; color: #1a1a18; padding: 4px;">
-                      <strong style="color: #0a5c3e; font-size: 13px;">Linderos del Terreno</strong><br/>
+                      <strong style="color: #0a5c3e; font-size: 13px;">Linderos del Terreno (Detalle)</strong><br/>
                       <span style="color: #6a6860; font-size: 11px;">NPN:</span> <code style="font-weight: 700; color: #1a1a18;">${predio.npn || 'Sin NPN'}</code><br/>
                       <span style="color: #6a6860; font-size: 11px;">Ficha:</span> <code style="font-weight: 700; color: #1a1a18;">${predio.espacio_de_nombres || 'Sin Ficha'}</code>
                     </div>
@@ -1335,9 +1436,13 @@ function TabUbicacion({ predio }) {
                   }}
                 />
               ))}
-              <ChangeView geometry={predio.geometry} />
             </>
           )}
+
+          <ChangeView 
+            geometry={predio.geometry} 
+            fallbackGeometries={otherPrediosWithGeom.map(op => op.geometry)}
+          />
         </MapContainer>
       </div>
 
@@ -1374,9 +1479,40 @@ export default function PredioModal({
   loadingCalificaciones = false,
   typeOptions,
   selectedSchema,
-  onRefresh
+  onRefresh,
+  allPredios = []
 }) {
   const [activeTab, setActiveTab] = useState("ficha");
+  const [allGeometries, setAllGeometries] = useState([]);
+  const [loadingAllGeometries, setLoadingAllGeometries] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const fetchAllGeometries = async () => {
+      try {
+        setLoadingAllGeometries(true);
+        const params = { page: 1, limit: 5000 };
+        if (selectedSchema) {
+          params.schema_name = selectedSchema;
+        }
+        const response = await axios.get('/api/predios', { params });
+        if (response.data.success && active) {
+          const fetchedPredios = response.data.data.predios || [];
+          setAllGeometries(fetchedPredios);
+        }
+      } catch (err) {
+        console.error('Error fetching all geometries for map:', err);
+      } finally {
+        if (active) setLoadingAllGeometries(false);
+      }
+    };
+
+    fetchAllGeometries();
+    return () => {
+      active = false;
+    };
+  }, [selectedSchema]);
+
   const modo = MODO_MAP[predio.modoAdquisicion] || { label: predio.modoAdquisicion, bg: "#f1efe8", color: "#4a4840" };
   const cond = COND_MAP[predio.condicionPredio]  || { label: predio.condicionPredio,  bg: "#f1efe8", color: "#4a4840" };
 
@@ -1890,6 +2026,7 @@ export default function PredioModal({
           {activeTab === "ubicacion"      && (
             <TabUbicacion 
               predio={predio} 
+              allPredios={allGeometries.length > 0 ? allGeometries : allPredios}
             />
           )}
         </div>

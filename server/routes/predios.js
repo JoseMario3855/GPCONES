@@ -1,5 +1,6 @@
 const express = require('express');
-const { body, param, query } = require('express-validator');
+const { body, param } = require('express-validator');
+const { query } = require('../config/database');
 const prediosController = require('../controllers/prediosController');
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 

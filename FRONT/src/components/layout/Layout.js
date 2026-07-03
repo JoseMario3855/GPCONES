@@ -166,6 +166,11 @@ const Layout = () => {
           label: 'Cargar XTF'
         },
         {
+          key: '/xtf/history',
+          icon: <FileTextOutlined />,
+          label: 'Registro de Cargas'
+        },
+        {
           key: '/xtf/validation',
           icon: <FileTextOutlined />,
           label: 'Validar Modelo'
@@ -174,11 +179,6 @@ const Layout = () => {
           key: '/xtf/import-excel',
           icon: <FileExcelOutlined />,
           label: 'Importar IGAC Excel'
-        },
-        {
-          key: '/xtf/excel-to-xtf',
-          icon: <SwapOutlined />,
-          label: 'Convertir Excel a XTF'
         }
       ]
     }] : []),
@@ -237,7 +237,7 @@ const Layout = () => {
     if (path === '/') return ['/'];
     if (path.startsWith('/predios')) return [path];
     if (path.startsWith('/propietarios')) return ['/propietarios'];
-    if (path.startsWith('/xtf')) return ['/xtf'];
+    if (path.startsWith('/xtf')) return [path];
     if (path.startsWith('/ili')) return ['/ili'];
     if (path.startsWith('/municipios')) return ['/municipios'];
     if (path.startsWith('/users')) return ['/users'];

@@ -119,6 +119,121 @@ class IGACExcelImporterService {
     let currentFicha = 1;
     let totalImported = 0;
     
+    // Query lookup IDs dynamically to prevent hardcoding issues across schemas
+    let tipoFuenteId = 829; // default fallback for dynamic schemas
+    let estadoDispId = 521; // default fallback for dynamic schemas
+    let basketId = 2; // default fallback
+
+    try {
+      const resTipo = await query(`
+        SELECT t_id FROM "${schemaName}".col_fuenteadministrativatipo 
+        WHERE ilicode = 'Documento_Publico' OR ilicode = 'Documento_Fuente.Escritura_Publica' 
+        ORDER BY CASE WHEN ilicode = 'Documento_Fuente.Escritura_Publica' THEN 0 ELSE 1 END LIMIT 1
+      `);
+      if (resTipo.rows[0]) tipoFuenteId = parseInt(resTipo.rows[0].t_id);
+
+      const resDisp = await query(`
+        SELECT t_id FROM "${schemaName}".col_estadodisponibilidadtipo 
+        WHERE ilicode = 'Disponible' LIMIT 1
+      `);
+      if (resDisp.rows[0]) estadoDispId = parseInt(resDisp.rows[0].t_id);
+
+      // 1. Predio Tipo
+      const resPredioTipo = await query(`
+        SELECT t_id FROM "${schemaName}".ilc_prediotipo 
+        WHERE ilicode = 'Predio.Privado.Privado' OR ilicode = 'Privado' OR ilicode = 'Privado.Privado'
+        LIMIT 1
+      `);
+      this.predioTipoId = resPredioTipo.rows[0] ? parseInt(resPredioTipo.rows[0].t_id) : 282;
+
+      // 2. Condicion Predio Tipo
+      const resCond = await query(`
+        SELECT t_id FROM "${schemaName}".ilc_condicionprediotipo 
+        WHERE ilicode = 'NPH' LIMIT 1
+      `);
+      this.condicionPredioId = resCond.rows[0] ? parseInt(resCond.rows[0].t_id) : 57;
+
+      // 3. Derecho Catastral Tipo
+      const resDer = await query(`
+        SELECT t_id FROM "${schemaName}".ilc_derechocatastraltipo 
+        WHERE ilicode = 'Dominio' LIMIT 1
+      `);
+      this.derechoTipoId = resDer.rows[0] ? parseInt(resDer.rows[0].t_id) : 977;
+
+      // 4. Basket ID
+      const resBasket = await query(`
+        SELECT t_id FROM "${schemaName}".t_ili2db_basket 
+        WHERE topic = 'Modelo_Aplicacion_Interno_Levantamiento_Catastral_LADMCOL_V1_0.Interno_Levantamiento_Catastral'
+        LIMIT 1
+      `);
+      if (resBasket.rows[0]) basketId = parseInt(resBasket.rows[0].t_id);
+
+      // 5. Documento Tipo Map
+      this.documentoTipoMap = {};
+      const resDoc = await query(`
+        SELECT t_id, ilicode FROM "${schemaName}".cr_documentotipo
+      `);
+      resDoc.rows.forEach(r => {
+        this.documentoTipoMap[r.ilicode] = parseInt(r.t_id);
+      });
+
+      // 6. Interesado Tipo Map
+      this.interesadoTipoMap = {};
+      const resInt = await query(`
+        SELECT t_id, ilicode FROM "${schemaName}".cr_interesadotipo
+      `);
+      resInt.rows.forEach(r => {
+        this.interesadoTipoMap[r.ilicode] = parseInt(r.t_id);
+      });
+
+      // 7. Sexo Tipo Map
+      this.sexoTipoMap = {};
+      const resSexo = await query(`
+        SELECT t_id, ilicode FROM "${schemaName}".cr_sexotipo
+      `);
+      resSexo.rows.forEach(r => {
+        this.sexoTipoMap[r.ilicode] = parseInt(r.t_id);
+      });
+
+      // 8. Destinacion Economica Tipo Map
+      this.destinacionTipoMap = {};
+      const resDest = await query(`
+        SELECT t_id, ilicode, dispname FROM "${schemaName}".ilc_destinacioneconomicatipo
+      `);
+      resDest.rows.forEach(r => {
+        this.destinacionTipoMap[r.ilicode] = parseInt(r.t_id);
+        if (r.dispname) {
+          this.destinacionTipoMap[r.dispname.toUpperCase().trim()] = parseInt(r.t_id);
+        }
+      });
+
+      // 9. Construccion Planta Tipo Map
+      this.plantaTipoMap = {};
+      const resPlanta = await query(`
+        SELECT t_id, ilicode FROM "${schemaName}".cr_construccionplantatipo
+      `);
+      resPlanta.rows.forEach(r => {
+        this.plantaTipoMap[r.ilicode] = parseInt(r.t_id);
+      });
+
+      // 10. Load all cr_usouconstipo values
+      this.usoUconsTipoMap = {};
+      const resUso = await query(`SELECT t_id, ilicode FROM "${schemaName}".cr_usouconstipo`);
+      resUso.rows.forEach(r => {
+        this.usoUconsTipoMap[r.ilicode] = parseInt(r.t_id);
+      });
+
+      // 11. Load all cr_unidadconstrucciontipo values
+      this.unidadConstruccionTipoMap = {};
+      const resUnidadConst = await query(`SELECT t_id, ilicode FROM "${schemaName}".cr_unidadconstrucciontipo`);
+      resUnidadConst.rows.forEach(r => {
+        this.unidadConstruccionTipoMap[r.ilicode] = parseInt(r.t_id);
+      });
+
+    } catch (e) {
+      console.warn('[EXCEL IMPORT] Warning querying lookup IDs dynamically:', e.message);
+    }
+    
     await query('BEGIN');
     
     try {
@@ -162,7 +277,7 @@ class IGACExcelImporterService {
             $7, $8, $9, $10, $11, $12, $13, $14, CURRENT_TIMESTAMP, $15, $16
           ) RETURNING t_id
         `, [
-          2, // t_basket ID for Interno_Levantamiento_Catastral
+          basketId, // t_basket ID resolved dynamically
           'ilc_predio',
           crypto.randomUUID(),
           predio.departamento,
@@ -171,8 +286,8 @@ class IGACExcelImporterService {
           matriculaInt,
           predio.area_terreno,
           predio.npn,
-          457, // tipo: Privado.Privado
-          524, // condicion_predio: NPH
+          this.predioTipoId || 282, // tipo
+          this.condicionPredioId || 57, // condicion_predio
           destinacionId,
           predio.area_terreno,
           predio.direccion, // Use direccion as name
@@ -188,12 +303,12 @@ class IGACExcelImporterService {
             t_id, t_basket, t_type, t_ili_tid, geometria, dimension, etiqueta,
             relacion_superficie, comienzo_vida_util_version, espacio_de_nombres, local_id
           ) VALUES (
-            nextval('"${schemaName}".t_ili2db_seq'), $1, $2, $3,
+            nextval('"${schemaName}".t_ili2db_seq'), $1, $2, $3, 
             ST_GeomFromText('MULTISURFACE Z (CURVEPOLYGON Z (COMPOUNDCURVE Z ((1000000 1000000 0, 1000000 1000001 0, 1000001 1000001 0, 1000001 1000000 0, 1000000 1000000 0))))', 3116),
             $4, $5, $6, CURRENT_TIMESTAMP, $7, $8
           ) RETURNING t_id
         `, [
-          2,
+          basketId,
           'cr_terreno',
           crypto.randomUUID(),
           null, null, null,
@@ -211,7 +326,7 @@ class IGACExcelImporterService {
             nextval('"${schemaName}".t_ili2db_seq'), $1, $2, $3, $4, NULL, $5
           )
         `, [
-          2,
+          basketId,
           'col_uebaunit',
           crypto.randomUUID(),
           terrenoTId,
@@ -237,7 +352,7 @@ class IGACExcelImporterService {
               CURRENT_TIMESTAMP, $14, $15
             ) RETURNING t_id
           `, [
-            2,
+            basketId,
             'ilc_interesado',
             crypto.randomUUID(),
             interesadoTipo,
@@ -247,7 +362,7 @@ class IGACExcelImporterService {
             nameParts.segundo_nombre,
             nameParts.primer_apellido,
             nameParts.segundo_apellido,
-            847, // sexo: Sin determinar
+            this.sexoTipoMap['Sin_Determinar'] || 516, // sexo: Sin determinar
             interesadoTipo === 2 ? owner.nombre : null, // razon_social
             owner.nombre, // nombre completo
             schemaName,
@@ -267,10 +382,10 @@ class IGACExcelImporterService {
               CURRENT_DATE, $5, $6, CURRENT_TIMESTAMP, $7, $8
             ) RETURNING t_id
           `, [
-            2,
+            basketId,
             'ilc_derecho',
             crypto.randomUUID(),
-            914, // Dominio
+            this.derechoTipoId || 977, // Dominio
             'Importado desde Excel IGAC R1/R2',
             predioTId,
             schemaName,
@@ -287,11 +402,51 @@ class IGACExcelImporterService {
               nextval('"${schemaName}".t_ili2db_seq'), $1, $2, $3, $4, $5, NULL
             )
           `, [
-            2,
+            basketId,
             'col_rrrinteresado',
             crypto.randomUUID(),
             derechoTId,
             interesadoTId
+          ]);
+
+          // 3.6.1. Insert into ilc_fuenteadministrativa (administrative source / document)
+          const fuenteRes = await query(`
+            INSERT INTO "${schemaName}".ilc_fuenteadministrativa (
+              t_id, t_basket, t_type, t_ili_tid, tipo, ente_emisor, observacion,
+              numero_fuente, estado_disponibilidad, fecha_documento_fuente,
+              espacio_de_nombres, local_id
+            ) VALUES (
+              nextval('"${schemaName}".t_ili2db_seq'), $1, $2, $3, $4, $5, $6,
+              $7, $8, CURRENT_DATE, $9, $10
+            ) RETURNING t_id
+          `, [
+            basketId, // t_basket
+            'ilc_fuenteadministrativa', // t_type
+            crypto.randomUUID(), // t_ili_tid
+            tipoFuenteId,
+            'Catastro',
+            'Importado automáticamente desde Excel R1/R2',
+            predio.npn, // Using NPN as source number reference
+            estadoDispId,
+            schemaName,
+            `${predio.npn}_fuente_${interesadoTId}`
+          ]);
+
+          const fuenteTId = fuenteRes.rows[0].t_id;
+
+          // 3.6.2. Insert into col_rrrfuente (links derecho and fuente)
+          await query(`
+            INSERT INTO "${schemaName}".col_rrrfuente (
+              t_id, t_basket, t_type, t_ili_tid, fuente_administrativa, rrr
+            ) VALUES (
+              nextval('"${schemaName}".t_ili2db_seq'), $1, $2, $3, $4, $5
+            )
+          `, [
+            basketId,
+            'col_rrrfuente',
+            crypto.randomUUID(),
+            fuenteTId,
+            derechoTId
           ]);
         }
 
@@ -311,7 +466,7 @@ class IGACExcelImporterService {
               $5, 2023, $6, NULL, $7, CURRENT_TIMESTAMP, $8, $9, $10, $11
             ) RETURNING t_id
           `, [
-            2,
+            basketId,
             'ilc_caracteristicasunidadconstruccion',
             crypto.randomUUID(),
             tipoId, // tipo_unidad_construccion mapped dynamically
@@ -338,10 +493,10 @@ class IGACExcelImporterService {
               $6, NULL, NULL, NULL, CURRENT_TIMESTAMP, $7, $8
             ) RETURNING t_id
           `, [
-            2,
+            basketId,
             'cr_unidadconstruccion',
             crypto.randomUUID(),
-            321, // tipo_planta default: Piso (321)
+            this.plantaTipoMap['Piso'] || 263, // tipo_planta default: Piso
             constr.pisos * 3, // height ~3m per floor
             caractTId,
             schemaName,
@@ -358,7 +513,7 @@ class IGACExcelImporterService {
               nextval('"${schemaName}".t_ili2db_seq'), $1, $2, $3, NULL, $4, $5
             )
           `, [
-            2,
+            basketId,
             'col_uebaunit',
             crypto.randomUUID(),
             constrTId,
@@ -419,64 +574,86 @@ class IGACExcelImporterService {
 
   // Map destiny strings or codes to lookup table IDs
   getDestinacionId(desc, code) {
-    const destinacionMap = {
-      'AGROPECUARIO': 655,
-      'AGRICOLA': 653,
-      'AGRÍCOLA': 653,
-      'HABITACIONAL': 661,
-      'RESIDENCIAL': 661,
-      'COMERCIAL': 657,
-      'INDUSTRIAL': 662,
-      'LOTE RURAL': 679
-    };
-
+    const destMap = this.destinacionTipoMap || {};
+    
     if (desc) {
       const key = String(desc).toUpperCase().trim();
-      if (destinacionMap[key]) return destinacionMap[key];
+      if (destMap[key]) return destMap[key];
+      // También mapear por ilicode estándar si coincide con la descripción
+      if (key === 'AGROPECUARIO' && destMap['Agropecuario']) return destMap['Agropecuario'];
+      if (key === 'AGRICOLA' && destMap['Agricola']) return destMap['Agricola'];
+      if (key === 'AGRÍCOLA' && destMap['Agricola']) return destMap['Agricola'];
+      if (key === 'HABITACIONAL' && destMap['Habitacional']) return destMap['Habitacional'];
+      if (key === 'RESIDENCIAL' && destMap['Habitacional']) return destMap['Habitacional'];
+      if (key === 'COMERCIAL' && destMap['Comercial']) return destMap['Comercial'];
+      if (key === 'INDUSTRIAL' && destMap['Industrial']) return destMap['Industrial'];
+      if (key === 'LOTE RURAL' && destMap['Lote_Rural']) return destMap['Lote_Rural'];
     }
+    
     if (code) {
       const c = String(code).toUpperCase().trim();
-      if (c === 'D') return 655; // Agropecuario
-      if (c === 'A') return 661; // Habitacional
-      if (c === 'I') return 662; // Industrial
-      if (c === 'C') return 657; // Comercial
+      if (c === 'D') return destMap['Agropecuario'] || destMap['AGROPECUARIO'] || 655;
+      if (c === 'A') return destMap['Habitacional'] || destMap['HABITACIONAL'] || 661;
+      if (c === 'I') return destMap['Industrial'] || destMap['INDUSTRIAL'] || 662;
+      if (c === 'C') return destMap['Comercial'] || destMap['COMERCIAL'] || 657;
     }
-    return 661; // Habitacional default
+    
+    return destMap['Habitacional'] || 661; // Habitacional default
   }
 
   // Map document type strings or codes to lookup table IDs
   getDocumentoTipoId(desc, code) {
+    const docMap = this.documentoTipoMap || {};
     if (desc) {
       const d = String(desc).toUpperCase().trim();
-      if (d.includes('CEDULA DE CIUDADANIA') || d.includes('CÉDULA DE CÉDULA DE CIUDADANÍA') || d.includes('CÉDULA DE CIUDADANÍA')) return 534;
-      if (d.includes('CEDULA DE EXTRANJERIA') || d.includes('CÉDULA DE EXTRANJERÍA')) return 535;
-      if (d.includes('NIT')) return 536;
-      if (d.includes('TARJETA DE IDENTIDAD')) return 537;
-      if (d.includes('REGISTRO CIVIL')) return 538;
-      if (d.includes('PASAPORTE')) return 540;
+      if (d.includes('CEDULA DE CIUDADANIA') || d.includes('CÉDULA DE CÉDULA DE CIUDADANÍA') || d.includes('CÉDULA DE CIUDADANÍA')) {
+        return docMap['Cedula_Ciudadania'] || 678;
+      }
+      if (d.includes('CEDULA DE EXTRANJERIA') || d.includes('CÉDULA DE EXTRANJERÍA')) {
+        return docMap['Cedula_Extranjeria'] || 679;
+      }
+      if (d.includes('NIT')) {
+        return docMap['NIT'] || 680;
+      }
+      if (d.includes('TARJETA DE IDENTIDAD')) {
+        return docMap['Tarjeta_Identidad'] || 681;
+      }
+      if (d.includes('REGISTRO CIVIL')) {
+        return docMap['Registro_Civil'] || 682;
+      }
+      if (d.includes('PASAPORTE')) {
+        return docMap['Pasaporte'] || 684;
+      }
     }
     if (code) {
       const c = String(code).toUpperCase().trim();
-      if (c === 'C' || c === 'CC') return 534;
-      if (c === 'E' || c === 'CE') return 535;
-      if (c === 'N' || c === 'NIT') return 536;
-      if (c === 'T' || c === 'TI') return 537;
-      if (c === 'R' || c === 'RC') return 538;
-      if (c === 'P') return 540;
+      if (c === 'C' || c === 'CC') return docMap['Cedula_Ciudadania'] || 678;
+      if (c === 'E' || c === 'CE') return docMap['Cedula_Extranjeria'] || 679;
+      if (c === 'N' || c === 'NIT') return docMap['NIT'] || 680;
+      if (c === 'T' || c === 'TI') return docMap['Tarjeta_Identidad'] || 681;
+      if (c === 'R' || c === 'RC') return docMap['Registro_Civil'] || 682;
+      if (c === 'P') return docMap['Pasaporte'] || 684;
     }
-    return 534; // CC default
+    return docMap['Cedula_Ciudadania'] || 678; // CC default
   }
 
   // Determine natural/legal person type
   getInteresadoTipo(docTipoId, nombre) {
-    if (docTipoId === 536) return 2; // NIT is Legal Person
+    const intMap = this.interesadoTipoMap || {};
+    const docMap = this.documentoTipoMap || {};
+    
+    // Si es NIT, es Persona Jurídica
+    if (docTipoId === docMap['NIT'] || docTipoId === 680) {
+      return intMap['Persona_Juridica'] || 1038;
+    }
+    
     if (nombre) {
       const n = nombre.toUpperCase();
       if (n.includes(' S.A') || n.includes(' S A') || n.includes(' SAS') || n.includes(' S.A.S') || n.includes(' LTDA') || n.includes(' LIMITADA') || n.includes(' MUNICIPIO') || n.includes(' DEPARTAMENTO') || n.includes(' NACION') || n.includes(' ASOCIACION')) {
-        return 2;
+        return intMap['Persona_Juridica'] || 1038;
       }
     }
-    return 1; // Natural Person
+    return intMap['Persona_Natural'] || 1037; // Natural Person default
   }
 
   // Helper to split full names of natural persons
@@ -515,132 +692,131 @@ class IGACExcelImporterService {
   // Map 3-digit Excel USO code to LADM-COL cr_usouconstipo (usoId) and cr_unidadconstrucciontipo (tipoId)
   getUsoAndTipo(excelCode) {
     const code = String(excelCode).trim().padStart(3, '0');
-    
-    // Default fallback: Residencial Vivienda hasta 3 pisos
-    let usoId = 226;
-    let tipoId = 330;
+    const usoMap = this.usoUconsTipoMap || {};
+    const tipoMap = this.unidadConstruccionTipoMap || {};
+
+    let ilicodeUso = 'Residencial.Vivienda_Hasta_3_Pisos';
+    let ilicodeTipo = 'Residencial';
 
     switch (code) {
       case '001':
-        usoId = 226; // Residencial.Vivienda_Hasta_3_Pisos
-        tipoId = 330; // Residencial
+        ilicodeUso = 'Residencial.Vivienda_Hasta_3_Pisos';
+        ilicodeTipo = 'Residencial';
         break;
       case '002':
-        usoId = 235; // Comercial.Comercio
-        tipoId = 331; // Comercial
+        ilicodeUso = 'Comercial.Comercio';
+        ilicodeTipo = 'Comercial';
         break;
       case '003':
-        usoId = 258; // Industrial.Talleres
-        tipoId = 332; // Industrial
+        ilicodeUso = 'Industrial.Talleres';
+        ilicodeTipo = 'Industrial';
         break;
       case '004':
-        usoId = 256; // Industrial.Industrias
-        tipoId = 332; // Industrial
+        ilicodeUso = 'Industrial.Industrias';
+        ilicodeTipo = 'Industrial';
         break;
       case '005':
-        usoId = 241; // Comercial.Oficinas_Consultorios
-        tipoId = 331; // Comercial
+        ilicodeUso = 'Comercial.Oficinas_Consultorios';
+        ilicodeTipo = 'Comercial';
         break;
       case '006':
-        usoId = 239; // Comercial.Hoteles
-        tipoId = 331; // Comercial
+        ilicodeUso = 'Comercial.Hoteles';
+        ilicodeTipo = 'Comercial';
         break;
       case '007':
-        usoId = 263; // Institucional.Clinicas_Hospitales_Centros_Medicos
-        tipoId = 333; // Institucional
+        ilicodeUso = 'Institucional.Clinicas_Hospitales_Centros_Medicos';
+        ilicodeTipo = 'Institucional';
         break;
       case '008':
-        usoId = 269; // Institucional.Iglesia
-        tipoId = 333; // Institucional
+        ilicodeUso = 'Institucional.Iglesia';
+        ilicodeTipo = 'Institucional';
         break;
       case '009':
-        usoId = 280; // Institucional.Unidad_Deportiva
-        tipoId = 333; // Institucional
+        ilicodeUso = 'Institucional.Unidad_Deportiva';
+        ilicodeTipo = 'Institucional';
         break;
       case '010':
-        usoId = 282; // Anexo.Albercas_Banaderas
-        tipoId = 334; // Anexo
+      case '043':
+        ilicodeUso = 'Anexo.Albercas_Banaderas';
+        ilicodeTipo = 'Anexo';
         break;
       case '012':
-        usoId = 290; // Anexo.Cocheras_Marraneras_Porquerizas
-        tipoId = 334; // Anexo
+        ilicodeUso = 'Anexo.Cocheras_Marraneras_Porquerizas';
+        ilicodeTipo = 'Anexo';
         break;
       case '013':
-        usoId = 297; // Anexo.Galpones_Gallineros
-        tipoId = 334; // Anexo
+        ilicodeUso = 'Anexo.Galpones_Gallineros';
+        ilicodeTipo = 'Anexo';
         break;
       case '014':
-        usoId = 300; // Anexo.Kioscos
-        tipoId = 334; // Anexo
+        ilicodeUso = 'Anexo.Kioscos';
+        ilicodeTipo = 'Anexo';
         break;
       case '019':
-        usoId = 309; // Anexo.Ramadas_Cobertizos_Caneyes
-        tipoId = 334; // Anexo
+        ilicodeUso = 'Anexo.Ramadas_Cobertizos_Caneyes';
+        ilicodeTipo = 'Anexo';
         break;
       case '021':
-        usoId = 310; // Anexo.Secaderos
-        tipoId = 334; // Anexo
+        ilicodeUso = 'Anexo.Secaderos';
+        ilicodeTipo = 'Anexo';
         break;
       case '023':
-        usoId = 312; // Anexo.Tanques
-        tipoId = 334; // Anexo
+        ilicodeUso = 'Anexo.Tanques';
+        ilicodeTipo = 'Anexo';
         break;
       case '026':
-        usoId = 283; // Anexo.Beneficiaderos
-        tipoId = 334; // Anexo
+        ilicodeUso = 'Anexo.Beneficiaderos';
+        ilicodeTipo = 'Anexo';
         break;
       case '028':
-        usoId = 288; // Anexo.Cerramiento
-        tipoId = 334; // Anexo
+      case '044':
+        ilicodeUso = 'Anexo.Cerramiento';
+        ilicodeTipo = 'Anexo';
         break;
       case '029':
-        usoId = 285; // Anexo.Canchas
-        tipoId = 334; // Anexo
+        ilicodeUso = 'Anexo.Canchas';
+        ilicodeTipo = 'Anexo';
         break;
       case '034':
-        usoId = 220; // Residencial.Garajes_Cubiertos
-        tipoId = 330; // Residencial
+        ilicodeUso = 'Residencial.Garajes_Cubiertos';
+        ilicodeTipo = 'Residencial';
         break;
       case '035':
-        usoId = 219; // Residencial.Depositos_Lockers
-        tipoId = 330; // Residencial
+        ilicodeUso = 'Residencial.Depositos_Lockers';
+        ilicodeTipo = 'Residencial';
         break;
       case '036':
-        usoId = 222; // Residencial.Salon_Comunal
-        tipoId = 330; // Residencial
+        ilicodeUso = 'Residencial.Salon_Comunal';
+        ilicodeTipo = 'Residencial';
         break;
       case '037':
-        usoId = 286; // Anexo.Canchas_de_Tenis
-        tipoId = 334; // Anexo
+        ilicodeUso = 'Anexo.Canchas_de_Tenis';
+        ilicodeTipo = 'Anexo';
         break;
       case '038':
-        usoId = 311; // Anexo.Silos
-        tipoId = 334; // Anexo
+        ilicodeUso = 'Anexo.Silos';
+        ilicodeTipo = 'Anexo';
         break;
       case '042':
-        usoId = 306; // Anexo.Piscinas
-        tipoId = 334; // Anexo
-        break;
-      case '043':
-        usoId = 282; // Anexo.Albercas_Banaderas
-        tipoId = 334; // Anexo
-        break;
-      case '044':
-        usoId = 288; // Anexo.Cerramiento
-        tipoId = 334; // Anexo
+        ilicodeUso = 'Anexo.Piscinas';
+        ilicodeTipo = 'Anexo';
         break;
       case '045':
-        usoId = 305; // Anexo.Pergolas
-        tipoId = 334; // Anexo
+        ilicodeUso = 'Anexo.Pergolas';
+        ilicodeTipo = 'Anexo';
         break;
       case '063':
-        usoId = 294; // Anexo.Establos_Pesebreras_Caballerizas
-        tipoId = 334; // Anexo
+        ilicodeUso = 'Anexo.Establos_Pesebreras_Caballerizas';
+        ilicodeTipo = 'Anexo';
         break;
       default:
-        usoId = 226; // Residencial.Vivienda_Hasta_3_Pisos
-        tipoId = 330; // Residencial
+        ilicodeUso = 'Residencial.Vivienda_Hasta_3_Pisos';
+        ilicodeTipo = 'Residencial';
     }
+
+    // Buscar en los mapas y retornar ID si existe, o usar un default razonable
+    const usoId = usoMap[ilicodeUso] || usoMap['Residencial.Vivienda_Hasta_3_Pisos'] || 415;
+    const tipoId = tipoMap[ilicodeTipo] || tipoMap['Residencial'] || 530;
 
     return { usoId, tipoId };
   }

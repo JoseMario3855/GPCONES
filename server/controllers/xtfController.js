@@ -39,7 +39,7 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 500 * 1024 * 1024, // 500MB
+    fileSize: 2000 * 1024 * 1024, // 2GB
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['.xtf', '.xml'];
@@ -78,6 +78,36 @@ const uploadExcel = multer({
       cb(null, true);
     } else {
       cb(new Error('Solo se permiten archivos Excel (.xlsx, .xls)'));
+    }
+  }
+});
+
+// Configuración de multer para archivos GDB comprimidos (ZIP)
+const storageGDB = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(__dirname, '../uploads/gdb');
+    fs.mkdir(uploadDir, { recursive: true })
+      .then(() => cb(null, uploadDir))
+      .catch(err => cb(err));
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, `gdb-${uniqueSuffix}${path.extname(file.originalname)}`);
+  }
+});
+
+const uploadGDB = multer({
+  storage: storageGDB,
+  limits: {
+    fileSize: 2000 * 1024 * 1024, // 2GB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['.zip'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedTypes.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo se permiten archivos .zip que contengan la geodatabase'));
     }
   }
 });
@@ -972,7 +1002,7 @@ module.exports = {
           schema_name,
           schema_owner
         FROM information_schema.schemata 
-        WHERE schema_name LIKE 'xtf_%' OR schema_name LIKE 'ili_%'
+        WHERE schema_name LIKE 'xtf_%' OR schema_name LIKE 'ili_%' OR schema_name LIKE 'excel_%'
         ORDER BY schema_name DESC
       `);
 
@@ -1478,8 +1508,8 @@ module.exports = {
       const fileName = req.file.originalname;
       const fileSize = req.file.size;
 
-      // Generar nombre único para el schema de importación Excel
-      schemaName = `excel_${municipio_id}_${Date.now()}`;
+      // Generar nombre único para el schema de importación Excel, limpiando guiones
+      schemaName = `excel_${municipio_id}_${Date.now()}`.replace(/-/g, '_');
 
       console.log(`[EXCEL IMPORT] Archivo: ${fileName}, Tamaño: ${fileSize}, Municipio: ${municipio_id}, Esquema: ${schemaName}`);
 
@@ -1583,7 +1613,7 @@ module.exports = {
       // Si falla y se alcanzó a crear el esquema, eliminarlo para limpiar la BD
       if (schemaName) {
         try {
-          await query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+          await db.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
           console.log(`[EXCEL IMPORT CLEANUP] Esquema ${schemaName} eliminado tras error`);
         } catch (cleanErr) {
           console.error(`[EXCEL IMPORT CLEANUP] Error al eliminar esquema ${schemaName}:`, cleanErr.message);
@@ -1721,5 +1751,569 @@ module.exports = {
     }
   },
 
-  uploadExcel
+  updateGeometriesGDB: async (req, res) => {
+    const { schema } = req.body;
+    if (!schema) {
+      return res.status(400).json({ success: false, error: 'Falta el parámetro schema' });
+    }
+
+    const consolidarTerrenos = req.body.consolidar_terrenos === 'true' || req.body.consolidar_terrenos === true || req.body.consolidar_terrenos === undefined;
+    const consolidarConstrucciones = req.body.consolidar_construcciones === 'true' || req.body.consolidar_construcciones === true || req.body.consolidar_construcciones === undefined;
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'Falta el archivo GDB (.zip)' });
+    }
+
+    const fsSimple = require('fs');
+    const { exec } = require('child_process');
+    const util = require('util');
+    const execPromise = util.promisify(exec);
+
+    const zipPath = req.file.path;
+    const tempExtractDir = path.join(__dirname, `../uploads/gdb/temp-${Date.now()}`);
+
+    try {
+      const { query } = db;
+
+      // 1. Validar existencia del esquema
+      const schemaExists = await query(`
+        SELECT schema_name FROM information_schema.schemata WHERE schema_name = $1
+      `, [schema]);
+
+      if (schemaExists.rows.length === 0) {
+        return res.status(404).json({ success: false, error: `El esquema "${schema}" no existe.` });
+      }
+
+      // 2. Extraer el archivo ZIP usando PowerShell Expand-Archive
+      await fs.mkdir(tempExtractDir, { recursive: true });
+      const winZipPath = path.resolve(zipPath).replace(/\//g, '\\');
+      const winDestPath = path.resolve(tempExtractDir).replace(/\//g, '\\');
+      
+      const unzipCmd = `tar -xf "${winZipPath}" -C "${winDestPath}"`;
+      console.log(`[GDB IMPORT] Extraiendo ZIP con tar: ${unzipCmd}`);
+      await execPromise(unzipCmd);
+
+      // 3. Buscar el directorio .gdb dentro del directorio extraído
+      const findGdbDir = (dir) => {
+        const list = fsSimple.readdirSync(dir);
+        for (const file of list) {
+          const fullPath = path.join(dir, file);
+          const stat = fsSimple.statSync(fullPath);
+          if (stat && stat.isDirectory()) {
+            if (file.toLowerCase().endsWith('.gdb')) {
+              return fullPath;
+            }
+            const sub = findGdbDir(fullPath);
+            if (sub) return sub;
+          }
+        }
+        return null;
+      };
+
+      const gdbPath = findGdbDir(tempExtractDir);
+      if (!gdbPath) {
+        throw new Error('No se encontró ninguna carpeta con extensión .gdb dentro del archivo ZIP');
+      }
+
+      console.log(`[GDB IMPORT] Carpeta GDB encontrada en: ${gdbPath}`);
+
+      // 4. Ejecutar ogr2ogr para importar la GDB al esquema correspondiente en PostgreSQL
+      let ogrPath = 'C:\\OSGeo4W\\bin\\ogr2ogr.exe';
+      let useOSGeo = true;
+      if (!fsSimple.existsSync(ogrPath)) {
+        ogrPath = 'C:\\Program Files\\PostgreSQL\\15\\bin\\ogr2ogr.exe';
+        useOSGeo = false;
+      }
+      if (!fsSimple.existsSync(ogrPath)) {
+        throw new Error(`No se encontró el ejecutable ogr2ogr en ninguna de las rutas esperadas (C:\\OSGeo4W o PostgreSQL).`);
+      }
+
+      const pgConn = `PG:host=${process.env.DB_HOST || 'localhost'} port=${process.env.DB_PORT || 5432} dbname=${process.env.DB_NAME || 'GP_CONES'} user=${process.env.DB_USER || 'postgres'} password=${process.env.DB_PASSWORD || 'admin'}`;
+      
+      const winGdbPath = path.resolve(gdbPath).replace(/\//g, '\\');
+      const ogrCmd = `"${ogrPath}" -f PostgreSQL "${pgConn}" "${winGdbPath}" -lco SCHEMA=${schema} -overwrite -nlt CONVERT_TO_LINEAR -nlt PROMOTE_TO_MULTI -s_srs EPSG:3116 -t_srs EPSG:3116 -skipfailures`;
+      console.log(`[GDB IMPORT] Ejecutando ogr2ogr: ${ogrCmd}`);
+
+      // Configurar opciones de entorno para evitar errores de drivers y PROJ en Windows
+      const execOpts = {
+        env: {
+          ...process.env
+        }
+      };
+
+      if (useOSGeo) {
+        execOpts.env.PATH = `C:\\OSGeo4W\\bin;${process.env.PATH}`;
+        execOpts.env.PROJ_LIB = 'C:\\OSGeo4W\\share\\proj';
+        execOpts.env.GDAL_DATA = 'C:\\OSGeo4W\\share\\gdal';
+      } else {
+        execOpts.env.PATH = `C:\\Program Files\\PostgreSQL\\15\\bin;${process.env.PATH}`;
+        execOpts.env.GDAL_DATA = 'C:\\Program Files\\PostgreSQL\\15\\gdal-data';
+      }
+
+      await execPromise(ogrCmd, execOpts);
+
+      // 5. Ejecutar la homologación/cruce de geometrías
+      // Detectar si el esquema es estándar (lc_) o intercambio (ilc_)
+      const isStandard = await query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = $1 AND table_name = 'lc_predio'
+        )
+      `, [schema]).then(res => res.rows[0].exists);
+
+      const tableTerreno = isStandard ? 'lc_terreno' : 'cr_terreno';
+      const tablePredio = isStandard ? 'lc_predio' : 'ilc_predio';
+      const npnColumn = isStandard ? 'numero_predial' : 'numero_predial_nacional';
+      const linkCol = isStandard ? 'ue_lc_terreno' : 'ue_cr_terreno';
+
+      const layers = [
+        { names: ['u_terreno', 'u_lc_terreno'], desc: 'Urbana (U_TERRENO)' },
+        { names: ['r_terreno', 'r_lc_terreno'], desc: 'Rural (R_TERRENO)' }
+      ];
+
+      let totalUpdated = 0;
+      const details = {};
+
+      const tableExists = async (schemaName, possibleNames) => {
+        for (const name of possibleNames) {
+          const result = await query(`
+            SELECT table_name FROM information_schema.tables 
+            WHERE table_schema = $1 AND LOWER(table_name) = LOWER($2)
+          `, [schemaName, name]);
+          if (result.rows.length > 0) {
+            return result.rows[0].table_name;
+          }
+        }
+        return null;
+      };
+
+      const getGeometryColumn = async (schemaName, tableName) => {
+        const result = await query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_schema = $1 AND LOWER(table_name) = LOWER($2) 
+            AND (udt_name = 'geometry' OR data_type = 'USER-DEFINED')
+          LIMIT 1
+        `, [schemaName, tableName]);
+        return result.rows[0]?.column_name || null;
+      };
+
+      const getCodigoColumn = async (schemaName, tableName) => {
+        const result = await query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_schema = $1 AND LOWER(table_name) = LOWER($2) 
+            AND (LOWER(column_name) = 'codigo' OR LOWER(column_name) = 'numero_predial' OR LOWER(column_name) = 'npn' OR LOWER(column_name) = 'numero_predial_nacional')
+          LIMIT 1
+        `, [schemaName, tableName]);
+        return result.rows[0]?.column_name || 'codigo';
+      };
+
+      if (consolidarTerrenos) {
+        for (const layer of layers) {
+          const { names: tableNames, desc } = layer;
+          const tableName = tableNames[0];
+          const actualTableName = await tableExists(schema, tableNames);
+
+          if (!actualTableName) {
+            details[tableName] = { status: 'skipped', message: 'Tabla no encontrada' };
+            continue;
+          }
+
+          const geomCol = await getGeometryColumn(schema, actualTableName);
+          if (!geomCol) {
+            details[tableName] = { status: 'error', message: 'No se identificó columna de geometría' };
+            continue;
+          }
+
+          const codeCol = await getCodigoColumn(schema, actualTableName);
+
+          // Obtener el SRID de la columna geométrica destino
+          const sridRes = await query(`
+            SELECT Find_SRID($1, $2, 'geometria')
+          `, [schema, tableTerreno]);
+          const targetSrid = sridRes.rows[0]?.find_srid || 3116;
+
+          const updateQuery = `
+            UPDATE "${schema}"."${tableTerreno}" t
+            SET geometria = ST_GeomFromText(
+              REPLACE(
+                ST_AsText(
+                  ST_Force3D(
+                    ST_Transform(
+                      ST_SetSRID(
+                        ST_CurveToLine(gdb."${geomCol}"),
+                        CASE WHEN ST_X(ST_Centroid(gdb."${geomCol}")) > 3000000 THEN 9377 ELSE 3116 END
+                      ),
+                      $1::integer
+                    )
+                  )
+                ),
+                'MULTIPOLYGON',
+                'MULTISURFACE'
+              ),
+              $1::integer
+            )
+            FROM "${schema}"."${actualTableName}" gdb
+            JOIN "${schema}"."${tablePredio}" p ON p."${npnColumn}" = gdb."${codeCol}"
+            JOIN "${schema}".col_uebaunit u ON u.baunit = p.t_id
+            WHERE u."${linkCol}" = t.t_id AND gdb."${geomCol}" IS NOT NULL
+          `;
+
+          const updateResult = await query(updateQuery, [targetSrid]);
+          details[tableName] = { status: 'success', updated: updateResult.rowCount };
+          totalUpdated += updateResult.rowCount;
+        }
+      } else {
+        console.log('[GDB IMPORT] Consolidación de terrenos omitida.');
+        for (const layer of layers) {
+          details[layer.names[0]] = { status: 'skipped', message: 'Omitido por configuración' };
+        }
+      }
+
+      // 5.2. Consolidar geometrías de unidades de construcción
+      const constTargetTables = ['lc_construccion', 'cr_unidadconstruccion', 'lc_unidadconstruccion'];
+      let targetConstTable = null;
+      for (const tName of constTargetTables) {
+        const actual = await tableExists(schema, [tName]);
+        if (actual) {
+          const geom = await getGeometryColumn(schema, actual);
+          if (geom) {
+            targetConstTable = actual;
+            break;
+          }
+        }
+      }
+
+      const constLayers = [
+        { names: ['u_construccion', 'u_construccion_informal'], desc: 'Construcción Urbana (U_CONSTRUCCION)' },
+        { names: ['r_construccion', 'r_construccion_informal'], desc: 'Construcción Rural (R_CONSTRUCCION)' }
+      ];
+
+      let totalConstUpdated = 0;
+      if (consolidarConstrucciones) {
+        if (targetConstTable) {
+          console.log(`[GDB IMPORT] Tabla destino de construcciones identificada: "${targetConstTable}". Iniciando consolidación...`);
+          for (const constLayer of constLayers) {
+            const { names: cTableNames, desc: cDesc } = constLayer;
+            const cTableName = cTableNames[0];
+            const actualCTableName = await tableExists(schema, cTableNames);
+
+            if (!actualCTableName) {
+              details[cTableName] = { status: 'skipped', message: 'Tabla no encontrada en GDB' };
+              continue;
+            }
+
+            const cGeomCol = await getGeometryColumn(schema, actualCTableName);
+            if (!cGeomCol) {
+              details[cTableName] = { status: 'error', message: 'No se identificó columna de geometría' };
+              continue;
+            }
+
+            // Obtener el SRID de la columna geométrica destino de construcciones
+            const cSridRes = await query(`
+              SELECT Find_SRID($1, $2, 'geometria')
+            `, [schema, targetConstTable]);
+            const targetConstSrid = cSridRes.rows[0]?.find_srid || 3116;
+
+            console.log(`[GDB IMPORT] Actualizando geometrías de ${cDesc} -> ${targetConstTable} (SRID: ${targetConstSrid})...`);
+            
+            const constUpdateQuery = `
+              UPDATE "${schema}"."${targetConstTable}" t
+              SET geometria = ST_GeomFromText(
+                REPLACE(
+                  ST_AsText(
+                    ST_Force3D(
+                      ST_Transform(
+                        ST_SetSRID(
+                          ST_CurveToLine(gdb."${cGeomCol}"),
+                          CASE WHEN ST_X(ST_Centroid(gdb."${cGeomCol}")) > 3000000 THEN 9377 ELSE 3116 END
+                        ),
+                        $1::integer
+                      )
+                    )
+                  ),
+                  'MULTIPOLYGON',
+                  'MULTISURFACE'
+                ),
+                $1::integer
+              )
+              FROM (
+                SELECT 
+                  codigo,
+                  identificador,
+                  "${cGeomCol}",
+                  ROW_NUMBER() OVER (PARTITION BY codigo ORDER BY identificador) as idx
+                FROM "${schema}"."${actualCTableName}"
+                WHERE "${cGeomCol}" IS NOT NULL
+              ) gdb
+              WHERE t.local_id = CONCAT(gdb.codigo, '_uc_', gdb.idx)
+            `;
+
+            const constUpdateResult = await query(constUpdateQuery, [targetConstSrid]);
+            details[cTableName] = { status: 'success', updated: constUpdateResult.rowCount };
+            totalConstUpdated += constUpdateResult.rowCount;
+          }
+
+          // Limpiar geometrías ficticias remanentes en construcciones (para que no aparezcan como cuadrados en QGIS)
+          try {
+            const cSridRes = await query(`
+              SELECT Find_SRID($1, $2, 'geometria')
+            `, [schema, targetConstTable]);
+            const targetConstSrid = cSridRes.rows[0]?.find_srid || 3116;
+
+            console.log(`[GDB IMPORT] Limpiando geometrías ficticias remanentes en ${targetConstTable}...`);
+            const cleanDummyConstQuery = `
+              UPDATE "${schema}"."${targetConstTable}"
+              SET geometria = ST_GeomFromText('MULTISURFACE Z EMPTY', $1::integer)
+              WHERE ST_Equals(geometria, ST_GeomFromText('MULTISURFACE Z (CURVEPOLYGON Z (COMPOUNDCURVE Z ((1000000 1000000 0, 1000000 1000001 0, 1000001 1000001 0, 1000001 1000000 0, 1000000 1000000 0))))', $1::integer))
+            `;
+            const cleanConstResult = await query(cleanDummyConstQuery, [targetConstSrid]);
+            console.log(`[GDB IMPORT] Se limpiaron ${cleanConstResult.rowCount} construcciones con geometría ficticia.`);
+            details['limpieza_construcciones'] = { cleaned: cleanConstResult.rowCount };
+          } catch (cleanConstErr) {
+            console.warn('[GDB IMPORT] Error al limpiar geometrías ficticias en construcciones:', cleanConstErr.message);
+          }
+        }
+      } else {
+        console.log('[GDB IMPORT] Consolidación de construcciones omitida.');
+        for (const constLayer of constLayers) {
+          details[constLayer.names[0]] = { status: 'skipped', message: 'Omitido por configuración' };
+        }
+      }
+
+      // 6. Limpiar las geometrías ficticias remanentes en terrenos (para que no aparezcan como cuadrados en QGIS)
+      let cleanedCount = 0;
+      if (consolidarTerrenos) {
+        try {
+          console.log(`[GDB IMPORT] Limpiando geometrías ficticias remanentes en ${tableTerreno}...`);
+          const sridRes = await query(`
+            SELECT Find_SRID($1, $2, 'geometria')
+          `, [schema, tableTerreno]);
+          const cleanSrid = sridRes.rows[0]?.find_srid || 3116;
+
+          const cleanDummyQuery = `
+            UPDATE "${schema}"."${tableTerreno}"
+            SET geometria = ST_GeomFromText('MULTISURFACE Z EMPTY', $1::integer)
+            WHERE ST_Equals(geometria, ST_GeomFromText('MULTISURFACE Z (CURVEPOLYGON Z (COMPOUNDCURVE Z ((1000000 1000000 0, 1000000 1000001 0, 1000001 1000001 0, 1000001 1000000 0, 1000000 1000000 0))))', $1::integer))
+          `;
+          const cleanResult = await query(cleanDummyQuery, [cleanSrid]);
+          cleanedCount = cleanResult.rowCount;
+          console.log(`[GDB IMPORT] Se limpiaron ${cleanedCount} terrenos con geometría ficticia.`);
+        } catch (cleanErr) {
+          console.warn('[GDB IMPORT] Error al limpiar geometrías ficticias:', cleanErr.message);
+        }
+      }
+
+      // Auditoría
+      if (typeof logAuditEvent === 'function') {
+        await logAuditEvent(req.user.id, 'CONSOLIDACION_GDB', 'GDB', {
+          schema_name: schema,
+          updated_terrenos: totalUpdated,
+          updated_construcciones: totalConstUpdated,
+          cleaned_dummies: cleanedCount,
+          details
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: `Consolidación de geometrías GDB finalizada exitosamente.`,
+        data: {
+          total_updated: totalUpdated,
+          total_const_updated: totalConstUpdated,
+          cleaned_dummies: cleanedCount,
+          details
+        }
+      });
+
+    } catch (error) {
+      console.error('Error en updateGeometriesGDB controller:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Error al procesar el archivo GDB y consolidar geometrías',
+        error: error.message
+      });
+    } finally {
+      // Limpiar directorio temporal extraído y archivo cargado
+      try {
+        if (fsSimple.existsSync(tempExtractDir)) {
+          fsSimple.rmSync(tempExtractDir, { recursive: true, force: true });
+        }
+        if (fsSimple.existsSync(zipPath)) {
+          fsSimple.unlinkSync(zipPath);
+        }
+      } catch (cleanErr) {
+        console.error('[GDB CLEANUP ERROR]:', cleanErr.message);
+      }
+    }
+  },
+
+  uploadExcel,
+  uploadGDB,
+  downloadGDB: async (req, res) => {
+    const { schema_name } = req.params;
+    if (!schema_name) {
+      return res.status(400).json({ success: false, error: 'Falta el nombre del esquema' });
+    }
+
+    const fsSimple = require('fs');
+    const { exec } = require('child_process');
+    const util = require('util');
+    const execPromise = util.promisify(exec);
+    const { query } = db;
+
+    try {
+      // 1. Validar existencia del esquema
+      const schemaExists = await query(`
+        SELECT schema_name FROM information_schema.schemata WHERE schema_name = $1
+      `, [schema_name]);
+
+      if (schemaExists.rows.length === 0) {
+        return res.status(404).json({ success: false, error: `El esquema "${schema_name}" no existe.` });
+      }
+
+      // 2. Crear carpetas temporales
+      const tempDir = path.join(__dirname, `../uploads/gdb/export-${Date.now()}`);
+      await fs.mkdir(tempDir, { recursive: true });
+      const gdbFolder = path.join(tempDir, `${schema_name}.gdb`);
+
+      // 3. Ubicar ogr2ogr
+      let ogrPath = 'C:\\OSGeo4W\\bin\\ogr2ogr.exe';
+      let useOSGeo = true;
+      if (!fsSimple.existsSync(ogrPath)) {
+        ogrPath = 'C:\\Program Files\\PostgreSQL\\15\\bin\\ogr2ogr.exe';
+        useOSGeo = false;
+      }
+      if (!fsSimple.existsSync(ogrPath)) {
+        throw new Error(`No se encontró el ejecutable ogr2ogr en ninguna de las rutas esperadas (C:\\OSGeo4W o PostgreSQL).`);
+      }
+
+      // Connection string
+      const pgConn = `PG:host=${process.env.DB_HOST || 'localhost'} port=${process.env.DB_PORT || 5432} dbname=${process.env.DB_NAME || 'GP_CONES'} user=${process.env.DB_USER || 'postgres'} password=${process.env.DB_PASSWORD || 'admin'}`;
+
+      // 4. Identificar cuáles de las tablas catastrales o de GDB existen en el esquema
+      const tablesResult = await query(`
+        SELECT table_name FROM information_schema.tables 
+        WHERE table_schema = $1 AND table_type = 'BASE TABLE'
+      `, [schema_name]);
+      const allTables = tablesResult.rows.map(r => r.table_name.toLowerCase());
+
+      const targetTables = [
+        'u_terreno', 'r_terreno', 'u_construccion', 'r_construccion',
+        'u_lc_terreno', 'r_lc_terreno', 'u_lc_construccion', 'r_lc_construccion',
+        'cr_terreno', 'lc_terreno', 'cr_unidadconstruccion', 'lc_construccion'
+      ];
+      
+      const tablesToExport = allTables.filter(t => targetTables.includes(t));
+
+      if (tablesToExport.length === 0) {
+        return res.status(404).json({ 
+          success: false, 
+          error: `No hay tablas espaciales catastrales o de GDB en el esquema "${schema_name}" para exportar.` 
+        });
+      }
+
+      const winGdbFolder = path.resolve(gdbFolder).replace(/\//g, '\\');
+
+      // Configurar opciones de entorno para ogr2ogr
+      const execOpts = {
+        env: {
+          ...process.env
+        }
+      };
+
+      if (useOSGeo) {
+        execOpts.env.PATH = `C:\\OSGeo4W\\bin;${process.env.PATH}`;
+        execOpts.env.PROJ_LIB = 'C:\\OSGeo4W\\share\\proj';
+        execOpts.env.GDAL_DATA = 'C:\\OSGeo4W\\share\\gdal';
+      } else {
+        execOpts.env.PATH = `C:\\Program Files\\PostgreSQL\\15\\bin;${process.env.PATH}`;
+        execOpts.env.GDAL_DATA = 'C:\\Program Files\\PostgreSQL\\15\\gdal-data';
+      }
+
+      // 5. Ejecutar ogr2ogr de forma secuencial para cada tabla en la GDB
+      for (let i = 0; i < tablesToExport.length; i++) {
+        const t = tablesToExport[i];
+        const cleanName = t;
+
+        // Consultar todas las columnas de la tabla
+        const colsResult = await query(`
+          SELECT column_name FROM information_schema.columns 
+          WHERE table_schema = $1 AND table_name = $2
+        `, [schema_name, t]);
+        
+        // Buscar columnas geométricas
+        const geomColsResult = await query(`
+          SELECT column_name, udt_name 
+          FROM information_schema.columns 
+          WHERE table_schema = $1 AND table_name = $2 
+            AND (udt_name = 'geometry' OR data_type = 'USER-DEFINED')
+        `, [schema_name, t]);
+
+        let selectSql;
+        if (geomColsResult.rows.length > 0) {
+          const geomCol = geomColsResult.rows[0].column_name;
+          const otherCols = colsResult.rows
+            .map(r => r.column_name)
+            .filter(c => c !== geomCol);
+          
+          // Convertir MultiSurface a MultiPolygon para compatibilidad con FileGDB
+          selectSql = `SELECT ${otherCols.map(c => `\\"${c}\\"`).join(', ')}, ST_Multi(ST_CurveToLine(\\"${geomCol}\\")) as \\"${geomCol}\\" FROM \\"${schema_name}\\".\\"${t}\\"`;
+        } else {
+          selectSql = `SELECT * FROM \\"${schema_name}\\".\\"${t}\\"`;
+        }
+        
+        let ogrCmd = `"${ogrPath}" -f "OpenFileGDB" "${winGdbFolder}" "${pgConn}" -sql "${selectSql}" -nln "${cleanName}"`;
+        if (geomColsResult.rows.length > 0) {
+          ogrCmd += ' -nlt MULTIPOLYGON';
+        }
+        if (i > 0) {
+          ogrCmd += ' -update';
+        }
+        ogrCmd += ' -overwrite';
+        
+        console.log(`[GDB EXPORT] Ejecutando ogr2ogr para ${t}: ${ogrCmd}`);
+        await execPromise(ogrCmd, execOpts);
+      }
+
+      console.log(`[GDB EXPORT] Exportación a GDB completada en ${gdbFolder}`);
+
+      // 6. Comprimir la carpeta .gdb en un archivo ZIP usando PowerShell Compress-Archive
+      const zipFilePath = path.join(tempDir, `${schema_name}_gdb.zip`);
+      const winZipPath = path.resolve(zipFilePath).replace(/\//g, '\\');
+      
+      const zipCmd = `powershell -Command "Compress-Archive -Path '${winGdbFolder}' -DestinationPath '${winZipPath}' -Force"`;
+      console.log(`[GDB EXPORT] Comprimiendo a ZIP con: ${zipCmd}`);
+      await execPromise(zipCmd);
+
+      // Auditoría
+      if (typeof logAuditEvent === 'function') {
+        await logAuditEvent(req.user.id, 'DESCARGA_GDB_EXPORTADA', 'GDB', {
+          schema_name,
+          tables_exported: tablesToExport
+        });
+      }
+
+      // 7. Descargar el archivo ZIP
+      res.download(zipFilePath, `${schema_name}_GDB.zip`, async (err) => {
+        // Limpiar el directorio temporal después de la descarga
+        try {
+          if (fsSimple.existsSync(tempDir)) {
+            fsSimple.rmSync(tempDir, { recursive: true, force: true });
+          }
+        } catch (cleanErr) {
+          console.error('[GDB EXPORT CLEANUP ERROR]:', cleanErr.message);
+        }
+      });
+
+    } catch (error) {
+      console.error('Error en downloadGDB controller:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Error al exportar y descargar el archivo GDB',
+        error: error.message
+      });
+    }
+  }
 };

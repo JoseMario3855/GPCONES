@@ -153,7 +153,7 @@ export const mapConstruccion = (c, index) => {
     plantaUbicacion: c.plantaubicacion != null ? parseInt(c.plantaubicacion) : (c.plantaUbicacion != null ? parseInt(c.plantaUbicacion) : null),
     etiqueta: c.FHNC || c.etiqueta || c.NumeroConstruccion || `Unidad ${index + 1}`,
     anioConstruccion: anio,
-    uso: uso,
+    uso: c.IdUso && c.IdUso.includes('|') ? c.IdUso.split('|')[1] : (c.uso || c.Uso || uso),
     usoTradicional: c.usoTradicional || c.usoTadicional || (c.IdUso && c.IdUso.includes('|') ? c.IdUso.split('|')[1] : null),
     tipoPlanta: c.tipoPlanta || c.tipo_planta || null,
   };

@@ -209,6 +209,36 @@ class PrediosController {
         // Convertir área de hectáreas a m2
         const areaM2 = area_hectareas ? parseFloat(area_hectareas) * 10000 : 0;
 
+        // Obtener el ID de la t_basket para el esquema LADM-COL
+        let basketId = null;
+        try {
+          const resBasket = await query(
+            `SELECT t_id FROM "${schema}".t_ili2db_basket 
+             WHERE topic LIKE '%Levantamiento_Catastral%'
+             LIMIT 1`
+          );
+          if (resBasket.rows.length > 0) {
+            basketId = parseInt(resBasket.rows[0].t_id, 10);
+          }
+        } catch (basketError) {
+          console.warn('Advertencia obteniendo t_basket:', basketError.message);
+        }
+
+        if (!basketId) {
+          try {
+            const resAnyBasket = await query(
+              `SELECT t_id FROM "${schema}".t_ili2db_basket LIMIT 1`
+            );
+            if (resAnyBasket.rows.length > 0) {
+              basketId = parseInt(resAnyBasket.rows[0].t_id, 10);
+            } else {
+              basketId = 3; // Fallback razonable
+            }
+          } catch (anyError) {
+            basketId = 3;
+          }
+        }
+
         const fields = [];
         const values = [];
 
@@ -219,6 +249,8 @@ class PrediosController {
           }
         };
 
+        addField('t_basket', basketId);
+        addField('t_type', tableName);
         addField('t_ili_tid', tIliTid);
         addField('local_id', localId);
         addField(npnColumn, npnTrimmed || null);
@@ -238,6 +270,51 @@ class PrediosController {
 
         // Iniciar transacción de base de datos
         const client = await getClient();
+
+        // Helper para insertar registros en tablas técnicas de Interlis dinámicamente
+        const insertInterlisRecord = async (tblName, valObj) => {
+          const colsRes = await client.query(
+            `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2`,
+            [schema, tblName]
+          );
+          const colsSet = new Set(colsRes.rows.map(r => r.column_name.toLowerCase()));
+          
+          const flds = [];
+          const vals = [];
+          
+          for (const [key, val] of Object.entries(valObj)) {
+            if (colsSet.has(key.toLowerCase())) {
+              flds.push(key);
+              vals.push(val);
+            }
+          }
+          
+          if (colsSet.has('t_basket') && !flds.includes('t_basket')) {
+            flds.push('t_basket');
+            vals.push(basketId);
+          }
+          if (colsSet.has('t_type') && !flds.includes('t_type')) {
+            flds.push('t_type');
+            vals.push(tblName);
+          }
+          
+          let queryStr = '';
+          if (colsSet.has('t_id')) {
+            const plc = flds.map((_, i) => `$${i + 1}`);
+            queryStr = `INSERT INTO "${schema}"."${tblName}" (t_id, ${flds.join(', ')}) 
+                        VALUES (nextval('"${schema}".t_ili2db_seq'), ${plc.join(', ')}) 
+                        RETURNING t_id`;
+          } else {
+            const plc = flds.map((_, i) => `$${i + 1}`);
+            queryStr = `INSERT INTO "${schema}"."${tblName}" (${flds.join(', ')}) 
+                        VALUES (${plc.join(', ')}) 
+                        RETURNING t_id`;
+          }
+          
+          const res = await client.query(queryStr, vals);
+          return res.rows[0]?.t_id;
+        };
+
         let newPredio;
         try {
           await client.query('BEGIN');
@@ -250,6 +327,35 @@ class PrediosController {
             values
           );
           newPredio = insertRes.rows[0];
+
+          // 1b. También insertar en la tabla pública de predios para seguimiento de estado y bandeja de revisión
+          const geometryParam = geometry ? JSON.stringify(sanitizedGeom) : null;
+          await client.query(
+            `INSERT INTO public.predios (
+              id, npn, municipio, zona, sector, numero_ficha, area_hectareas, 
+              tipo_predio, uso_predio, propietario_nombre, propietario_documento, 
+              propietario_tipo_documento, geometry, created_by, estado
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 
+              CASE WHEN $13::text IS NOT NULL THEN ST_GeomFromGeoJSON($13) ELSE NULL END, 
+              $14, $15)`,
+            [
+              tIliTid, // usas el mismo UUID para mantener la vinculación!
+              npn,
+              municipio,
+              zona || null,
+              sector || null,
+              numero_ficha || null,
+              area_hectareas || null,
+              tipo_predio || null,
+              uso_predio || null,
+              propietario_nombre || null,
+              propietario_documento || null,
+              propietario_tipo_documento || null,
+              geometryParam,
+              req.user.id,
+              'Borrador'
+            ]
+          );
 
           // 2. Insertar terreno (geometría) si viene especificada
           if (geometry) {
@@ -275,6 +381,15 @@ class PrediosController {
               
               const terrainFields = ['t_ili_tid', 'local_id', 'comienzo_vida_util_version'];
               const terrainValues = [terrainTid, terrainLocalId, new Date()];
+              
+              if (terrainCols.has('t_basket')) {
+                terrainFields.push('t_basket');
+                terrainValues.push(basketId);
+              }
+              if (terrainCols.has('t_type')) {
+                terrainFields.push('t_type');
+                terrainValues.push(terrainTableName);
+              }
               
               let srid = 3116; // default fallback
               let useForce3D = false;
@@ -353,10 +468,10 @@ class PrediosController {
                 const baunitCol = uebaCols.find(c => c.includes('baunit'));
                 
                 if (terrenoCol && baunitCol) {
-                  await client.query(
-                    `INSERT INTO "${schema}"."col_uebaunit" (${terrenoCol}, ${baunitCol}) VALUES ($1, $2)`,
-                    [terrainId, newPredio.id]
-                  );
+                  await insertInterlisRecord('col_uebaunit', {
+                    [terrenoCol]: terrainId,
+                    [baunitCol]: newPredio.id
+                  });
                 }
               }
             }
@@ -399,20 +514,21 @@ class PrediosController {
             const razon_social = intTipo === 1038 ? propietario_nombre : null;
             
             // Insertar interesado
-            const intRes = await client.query(`
-              INSERT INTO "${schema}"."${tableInteresado}" (
-                t_ili_tid, tipo, tipo_documento, documento_identidad, 
-                primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, 
-                razon_social, autorreconocimientocampesino, comienzo_vida_util_version, 
-                espacio_de_nombres, local_id
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, CURRENT_TIMESTAMP, $10, $11)
-              RETURNING t_id
-            `, [
-              intTid, intTipo, docTypeId, propietario_documento || '0',
-              primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
-              razon_social, 'GPCONES_Interesados', intLocalId
-            ]);
-            const interesadoId = intRes.rows[0].t_id;
+            const interesadoId = await insertInterlisRecord(tableInteresado, {
+              t_ili_tid: intTid,
+              tipo: intTipo,
+              tipo_documento: docTypeId,
+              documento_identidad: propietario_documento || '0',
+              primer_nombre,
+              segundo_nombre,
+              primer_apellido,
+              segundo_apellido,
+              razon_social,
+              autorreconocimientocampesino: false,
+              comienzo_vida_util_version: new Date(),
+              espacio_de_nombres: 'GPCONES_Interesados',
+              local_id: intLocalId
+            });
             
             // Resolver t_id de tipo_derecho (Dominio)
             const derTypeTable = isStandard ? 'lc_derechotipo' : 'ilc_derechocatastraltipo';
@@ -434,49 +550,39 @@ class PrediosController {
               `, [schema]);
               const hasFraccion = colCheck.rows.length > 0;
               
-              const standardFields = [
-                't_ili_tid', 'tipo', 'posesion_ancestral_y_o_tradicional', 
-                'fecha_inicio_tenencia', 'unidad', 'espacio_de_nombres', 'local_id', 
-                'interesado_cr_interesado'
-              ];
-              const standardValues = [
-                derTid, derTypeId, false, new Date(), newPredio.id, 
-                'GPCONES_Derechos', derLocalId, interesadoId
-              ];
+              const derValues = {
+                t_ili_tid: derTid,
+                tipo: derTypeId,
+                posesion_ancestral_y_o_tradicional: false,
+                fecha_inicio_tenencia: new Date(),
+                unidad: newPredio.id,
+                espacio_de_nombres: 'GPCONES_Derechos',
+                local_id: derLocalId,
+                interesado_cr_interesado: interesadoId
+              };
               
               if (hasFraccion) {
-                standardFields.push('fraccion_derecho');
-                standardValues.push('1.0');
+                derValues.fraccion_derecho = 1.0;
               }
               
-              const placeholders = standardFields.map((_, idx) => `$${idx + 1}`);
-              
-              const derRes = await client.query(`
-                INSERT INTO "${schema}"."lc_derecho" (${standardFields.join(', ')})
-                VALUES (${placeholders.join(', ')})
-                RETURNING t_id
-              `, standardValues);
-              rrrId = derRes.rows[0].t_id;
+              rrrId = await insertInterlisRecord('lc_derecho', derValues);
             } else {
-              const derRes = await client.query(`
-                INSERT INTO "${schema}"."ilc_derecho" (
-                  t_ili_tid, tipo, posesion_ancestral_y_o_tradicional,
-                  fecha_inicio_tenencia, unidad, comienzo_vida_util_version,
-                  espacio_de_nombres, local_id
-                ) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7)
-                RETURNING t_id
-              `, [
-                derTid, derTypeId, false, new Date(), newPredio.id,
-                'GPCONES_Derechos', derLocalId
-              ]);
-              rrrId = derRes.rows[0].t_id;
+              rrrId = await insertInterlisRecord('ilc_derecho', {
+                t_ili_tid: derTid,
+                tipo: derTypeId,
+                posesion_ancestral_y_o_tradicional: false,
+                fecha_inicio_tenencia: new Date(),
+                unidad: newPredio.id,
+                comienzo_vida_util_version: new Date(),
+                espacio_de_nombres: 'GPCONES_Derechos',
+                local_id: derLocalId
+              });
               
               // Tabla col_rrrinteresado en no-standard
-              await client.query(`
-                INSERT INTO "${schema}"."col_rrrinteresado" (
-                  rrr, interesado_ilc_interesado
-                ) VALUES ($1, $2)
-              `, [rrrId, interesadoId]);
+              await insertInterlisRecord('col_rrrinteresado', {
+                rrr: rrrId,
+                interesado_ilc_interesado: interesadoId
+              });
             }
             
             // Insertar fuente administrativa (escritura)
@@ -500,24 +606,21 @@ class PrediosController {
               );
               const dispId = dispResult.rows[0]?.t_id || 934;
               
-              const fuRes = await client.query(`
-                INSERT INTO "${schema}"."${tableFuente}" (
-                  t_ili_tid, tipo, ente_emisor, numero_fuente,
-                  estado_disponibilidad, fecha_documento_fuente,
-                  espacio_de_nombres, local_id
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                RETURNING t_id
-              `, [
-                fuTid, fuTypeId, 'Notaría Catastral', 'NUEVO_PREDIO',
-                dispId, new Date(), 'GPCONES_Fuentes', fuLocalId
-              ]);
-              const fuenteId = fuRes.rows[0].t_id;
+              const fuenteId = await insertInterlisRecord(tableFuente, {
+                t_ili_tid: fuTid,
+                tipo: fuTypeId,
+                ente_emisor: 'Notaría Catastral',
+                numero_fuente: 'NUEVO_PREDIO',
+                estado_disponibilidad: dispId,
+                fecha_documento_fuente: new Date(),
+                espacio_de_nombres: 'GPCONES_Fuentes',
+                local_id: fuLocalId
+              });
               
-              await client.query(`
-                INSERT INTO "${schema}"."col_rrrfuente" (
-                  rrr, fuente_administrativa
-                ) VALUES ($1, $2)
-              `, [rrrId, fuenteId]);
+              await insertInterlisRecord('col_rrrfuente', {
+                rrr: rrrId,
+                fuente_administrativa: fuenteId
+              });
             }
           }
 
@@ -971,14 +1074,14 @@ class PrediosController {
       const ucTipoTable = `"${schema}"."cr_unidadconstrucciontipo"`;
       const ucUsoTable = `"${schema}"."cr_usouconstipo"`;
       const ucPlantaTable = `"${schema}"."cr_construccionplantatipo"`;
-      const ucTipoRes = await query(`SELECT t_id, ilicode, dispname FROM ${ucTipoTable} ORDER BY dispname`);
-      const ucUsoRes = await query(`SELECT t_id, ilicode, dispname FROM ${ucUsoTable} ORDER BY dispname`);
-      const ucPlantaRes = await query(`SELECT t_id, ilicode, dispname FROM ${ucPlantaTable} ORDER BY dispname`);
+      const ucTipoRes = await query(`SELECT t_id, ilicode, itfcode, dispname FROM ${ucTipoTable} ORDER BY dispname`);
+      const ucUsoRes = await query(`SELECT t_id, ilicode, itfcode, dispname FROM ${ucUsoTable} ORDER BY dispname`);
+      const ucPlantaRes = await query(`SELECT t_id, ilicode, itfcode, dispname FROM ${ucPlantaTable} ORDER BY dispname`);
 
       let ucTradRes = { rows: [] };
       if (!isStandard) {
         const ucTradTable = `"${schema}"."ilc_usostradicionalesculturalestipo"`;
-        ucTradRes = await query(`SELECT t_id, ilicode, dispname FROM ${ucTradTable} ORDER BY dispname`);
+        ucTradRes = await query(`SELECT t_id, ilicode, itfcode, dispname FROM ${ucTradTable} ORDER BY dispname`);
       }
 
       // Helper para buscar tablas de calificación convencional (cuc_)
@@ -1718,6 +1821,92 @@ class PrediosController {
           addUpdateField('area_catastral_terreno', areaM2);
         }
 
+        let geomUpdated = false;
+        if (updateData.geometry) {
+          try {
+            const sanitizedGeom = sanitizeGeometry(updateData.geometry);
+            
+            // 1. Obtener la tabla de linderos del terreno y columna de link en col_uebaunit
+            const uebColsResult = await query(
+              `SELECT column_name FROM information_schema.columns 
+               WHERE table_schema = $1 AND table_name = 'col_uebaunit'`,
+              [schema]
+            );
+            const uebCols = new Set(uebColsResult.rows.map(r => r.column_name));
+            
+            let terrainLinkCol = 'ue_cr_terreno';
+            if (uebCols.has('ue_lc_terreno')) {
+              terrainLinkCol = 'ue_lc_terreno';
+            } else if (uebCols.has('ue_ilc_terreno')) {
+              terrainLinkCol = 'ue_ilc_terreno';
+            } else if (uebCols.has('ue_terreno')) {
+              terrainLinkCol = 'ue_terreno';
+            }
+            
+            const terrainTargetTables = ['lc_terreno', 'cr_terreno', 'lc_lindero'];
+            let terrainTableName = 'cr_terreno';
+            for (const tName of terrainTargetTables) {
+              const checkTbl = await query(
+                `SELECT EXISTS (
+                  SELECT FROM information_schema.tables 
+                  WHERE table_schema = $1 AND table_name = $2
+                )`,
+                [schema, tName]
+              );
+              if (checkTbl.rows[0]?.exists) {
+                terrainTableName = tName;
+                break;
+              }
+            }
+
+            // 2. Obtener el t_id del terreno asociado a este predio (baunit)
+            const linkRes = await query(
+              `SELECT "${terrainLinkCol}" as terrain_id 
+               FROM "${schema}".col_uebaunit 
+               WHERE baunit = $1 AND "${terrainLinkCol}" IS NOT NULL 
+               LIMIT 1`,
+              [id]
+            );
+
+            if (linkRes.rows.length > 0) {
+              const terrainId = linkRes.rows[0].terrain_id;
+
+              // 3. Obtener el SRID de la columna de geometría destino del terreno
+              const sridRes = await query(
+                `SELECT Find_SRID($1, $2, 'geometria')`,
+                [schema, terrainTableName]
+              );
+              const targetSrid = sridRes.rows[0]?.find_srid || 3116;
+
+              // 4. Actualizar la geometría
+              const updateGeomSql = `
+                UPDATE "${schema}"."${terrainTableName}"
+                SET geometria = ST_GeomFromText(
+                  REPLACE(
+                    ST_AsText(
+                      ST_Force3D(
+                        ST_Transform(
+                          ST_GeomFromGeoJSON($1),
+                          $2::integer
+                        )
+                      )
+                    ),
+                    'MULTIPOLYGON',
+                    'MULTISURFACE'
+                  ),
+                  $2::integer
+                )
+                WHERE t_id = $3
+              `;
+              await query(updateGeomSql, [JSON.stringify(sanitizedGeom), targetSrid, terrainId]);
+              console.log(`[updatePredio LADM GEOM] Geometría de terreno ID ${terrainId} actualizada con éxito en ${schema}.${terrainTableName}`);
+              geomUpdated = true;
+            }
+          } catch (geomErr) {
+            console.error('[updatePredio LADM GEOM] Error al actualizar la geometría en el esquema LADM:', geomErr.message);
+          }
+        }
+
         if (ladmFields.length === 0) {
            return res.json({ success: true, message: 'Ningún dato a actualizar en el predio LADM' });
         }
@@ -1727,6 +1916,58 @@ class PrediosController {
           `UPDATE "${schema}"."${tableName}" SET ${ladmFields.join(', ')} WHERE t_id = $${paramIndex} RETURNING *`,
           ladmValues
         );
+
+        // También actualizar la tabla pública de predios para consistencia de estado y bandeja de revisión
+        try {
+          const publicUpdateFields = [];
+          const publicUpdateValues = [];
+          let publicIdx = 1;
+          
+          const addPublicField = (col, val) => {
+            if (val !== undefined) {
+              publicUpdateFields.push(`"${col}" = $${publicIdx++}`);
+              publicUpdateValues.push(val);
+            }
+          };
+          
+          addPublicField('npn', npnValue);
+          addPublicField('municipio', updateData.municipio);
+          addPublicField('zona', updateData.zona);
+          addPublicField('sector', updateData.sector);
+          addPublicField('numero_ficha', updateData.numero_ficha);
+          addPublicField('area_hectareas', updateData.area_hectareas);
+          addPublicField('tipo_predio', updateData.tipo_predio);
+          addPublicField('uso_predio', updateData.uso_predio);
+          addPublicField('propietario_nombre', updateData.propietario_nombre);
+          addPublicField('propietario_documento', updateData.propietario_documento);
+          addPublicField('propietario_tipo_documento', updateData.propietario_tipo_documento);
+          addPublicField('estado', updateData.estado);
+          
+          if (updateData.geometry !== undefined) {
+            const geomParam = updateData.geometry ? JSON.stringify(sanitizeGeometry(updateData.geometry)) : null;
+            if (geomParam) {
+              publicUpdateFields.push(`"geometry" = ST_GeomFromGeoJSON($${publicIdx++})`);
+              publicUpdateValues.push(geomParam);
+            } else {
+              publicUpdateFields.push(`"geometry" = NULL`);
+            }
+          }
+          
+          if (publicUpdateFields.length > 0) {
+            publicUpdateValues.push(id);
+            await query(
+              `UPDATE public.predios 
+               SET ${publicUpdateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP 
+               WHERE id = (SELECT t_ili_tid::uuid FROM "${schema}"."${tableName}" WHERE t_id = $${publicIdx}::bigint LIMIT 1) 
+                  OR id::text = $${publicIdx} 
+                  OR npn = (SELECT ${npnColumn} FROM "${schema}"."${tableName}" WHERE t_id = $${publicIdx}::bigint LIMIT 1)`,
+              publicUpdateValues
+            );
+          }
+        } catch (pubErr) {
+          console.warn('[updatePredio] No se pudo sincronizar la tabla pública:', pubErr.message);
+        }
+
         return res.json({ success: true, data: result.rows[0] });
       }
 
@@ -2379,6 +2620,91 @@ class PrediosController {
       const prediotipoTable = prefix === 'ilc_' ? 'ilc_prediotipo' : 'col_unidadadministrativabasicatipo';
       const npnColumn = prefix === 'ilc_' ? 'numero_predial_nacional' : 'numero_predial';
 
+      // Detect uebaunit and terrain tables to fetch geometry for the list
+      let geometrySelectionStr = '';
+      if (isLadmCol) {
+        try {
+          const terrainTableResult = await query(
+            `SELECT table_name FROM information_schema.tables 
+             WHERE table_schema = $1 
+               AND (table_name = 'cr_terreno' OR table_name = 'lc_terreno' OR table_name = 'ilc_terreno') 
+             LIMIT 1`,
+            [schemaName]
+          );
+          if (terrainTableResult.rows.length > 0) {
+            const terrainTableName = terrainTableResult.rows[0].table_name;
+            const uebaunitResult = await query(
+              `SELECT table_name FROM information_schema.tables 
+               WHERE table_schema = $1 AND table_name = 'col_uebaunit' LIMIT 1`,
+              [schemaName]
+            );
+            if (uebaunitResult.rows.length > 0) {
+              const uebColsResult = await query(
+                `SELECT column_name FROM information_schema.columns 
+                 WHERE table_schema = $1 AND table_name = 'col_uebaunit'`,
+                [schemaName]
+              );
+              const uebCols = new Set(uebColsResult.rows.map(r => r.column_name));
+              let linkCol = 'ue_cr_terreno';
+              if (uebCols.has('ue_lc_terreno')) {
+                linkCol = 'ue_lc_terreno';
+              } else if (uebCols.has('ue_ilc_terreno')) {
+                linkCol = 'ue_ilc_terreno';
+              } else if (uebCols.has('ue_terreno')) {
+                linkCol = 'ue_terreno';
+              }
+
+              const copropiedadResult = await query(
+                `SELECT table_name FROM information_schema.tables 
+                 WHERE table_schema = $1 AND (table_name = 'cr_predio_copropiedad' OR table_name = 'lc_predio_copropiedad') LIMIT 1`,
+                [schemaName]
+              );
+              const copTableName = copropiedadResult.rows.length > 0 ? copropiedadResult.rows[0].table_name : null;
+
+              const attempt1 = `(
+                SELECT ST_AsGeoJSON(ST_Transform(ST_CurveToLine(t.geometria), 4326))
+                FROM "${schemaName}"."${terrainTableName}" t
+                JOIN "${schemaName}".col_uebaunit ueb ON ueb.${linkCol} = t.t_id
+                WHERE ueb.baunit = predio.t_id AND t.geometria IS NOT NULL
+                LIMIT 1
+              )`;
+
+              const attempt2 = copTableName ? `(
+                SELECT ST_AsGeoJSON(ST_Transform(ST_CurveToLine(t.geometria), 4326))
+                FROM "${schemaName}"."${terrainTableName}" t
+                JOIN "${schemaName}".col_uebaunit ueb ON ueb.${linkCol} = t.t_id
+                WHERE ueb.baunit = (
+                  SELECT matriz FROM "${schemaName}"."${copTableName}" 
+                  WHERE unidad_predial = predio.t_id 
+                  LIMIT 1
+                ) AND t.geometria IS NOT NULL
+                LIMIT 1
+              )` : 'NULL';
+
+              const attempt3 = `(
+                SELECT ST_AsGeoJSON(ST_Transform(ST_CurveToLine(t.geometria), 4326))
+                FROM "${schemaName}"."${terrainTableName}" t
+                WHERE SUBSTRING(t.local_id, 1, 21) = SUBSTRING(COALESCE(predio.${npnColumn}, ''), 1, 21)
+                  AND t.geometria IS NOT NULL
+                LIMIT 1
+              )`;
+
+              geometrySelectionStr = `, COALESCE(${attempt1}, ${attempt2}, ${attempt3}) as geometry_geojson`;
+            }
+          }
+        } catch (geomError) {
+          console.warn('⚠️ No se pudo determinar la relación de geometría para el listado de predios:', geomError.message);
+        }
+      } else {
+        const hasGeometriaColumn = columns.find(col => col.toLowerCase() === 'geometria');
+        const hasGeometryColumn = columns.find(col => col.toLowerCase() === 'geometry');
+        if (hasGeometriaColumn) {
+          geometrySelectionStr = `, ST_AsGeoJSON(ST_Transform(ST_CurveToLine(predio.geometria), 4326)) as geometry_geojson`;
+        } else if (hasGeometryColumn) {
+          geometrySelectionStr = `, ST_AsGeoJSON(predio.geometry) as geometry_geojson`;
+        }
+      }
+
       let baseQuery = `SELECT * FROM ${fullTableName}`;
 
       if (isLadmCol) {
@@ -2390,6 +2716,7 @@ class PrediosController {
             condicion.ilicode as "Condicion",
             tipo.ilicode as "Tipo",
             destino.ilicode as "DestinoEconomico",
+            ${geometrySelectionStr ? geometrySelectionStr.substring(1) + ',' : ''}
             CASE
               WHEN tipodir.ilicode = 'No_Estructurada' THEN direccion.nombre_predio
               ELSE
@@ -2543,7 +2870,7 @@ class PrediosController {
           ORDER BY ${sortColumn} ${safeSortOrder}
           LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}
         ` : `
-          SELECT * 
+          SELECT *, ${geometrySelectionStr ? geometrySelectionStr.substring(1) : 'NULL as geometry_geojson'}
           FROM ${fullTableName}
           ${whereClauseStr}
           ORDER BY ${sortColumn} ${safeSortOrder}
@@ -2597,6 +2924,15 @@ class PrediosController {
         
         if (row.CondicionPredio && !mapped.estado) mapped.estado = row.CondicionPredio;
         else if (row.condicion_predio && !mapped.estado) mapped.estado = row.condicion_predio;
+        
+        if (row.geometry_geojson) {
+          try {
+            mapped.geometry = JSON.parse(row.geometry_geojson);
+          } catch (e) {
+            console.error('Error al parsear geometry_geojson:', e.message);
+          }
+          delete mapped.geometry_geojson;
+        }
         
         return mapped;
       });

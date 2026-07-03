@@ -115,26 +115,35 @@ const Users = () => {
 
   const handleDeleteUser = async (userId) => {
     try {
-      // TODO: Implementar endpoint real de eliminación
-      message.success('Usuario eliminado exitosamente');
-      loadUsers();
-      loadUserStats();
+      const response = await axios.delete(`/api/users/${userId}`);
+      if (response.data.success) {
+        message.success('Usuario desactivado/eliminado exitosamente');
+        loadUsers();
+        loadUserStats();
+      }
     } catch (error) {
       console.error('Error eliminando usuario:', error);
-      message.error('Error eliminando el usuario');
+      message.error(error.response?.data?.message || error.response?.data?.error || 'Error eliminando el usuario');
     }
   };
 
   const handleToggleStatus = async (userId, currentStatus) => {
     try {
-      // TODO: Implementar endpoint real de cambio de estado
-      const newStatus = !currentStatus;
-      message.success(`Usuario ${newStatus ? 'activado' : 'desactivado'} exitosamente`);
-      loadUsers();
-      loadUserStats();
+      let response;
+      if (currentStatus) {
+        response = await axios.delete(`/api/users/${userId}`);
+      } else {
+        response = await axios.put(`/api/users/${userId}/reactivate`);
+      }
+      
+      if (response.data.success) {
+        message.success(`Usuario ${currentStatus ? 'desactivado' : 'activado'} exitosamente`);
+        loadUsers();
+        loadUserStats();
+      }
     } catch (error) {
       console.error('Error cambiando estado del usuario:', error);
-      message.error('Error cambiando el estado del usuario');
+      message.error(error.response?.data?.message || error.response?.data?.error || 'Error cambiando el estado del usuario');
     }
   };
 
