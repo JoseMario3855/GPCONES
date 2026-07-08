@@ -1068,6 +1068,19 @@ function TabCalificaciones({
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {isConvencional && (
+                    <span style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "#0a5c3e",
+                      background: "#e8f5e9",
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      border: "0.5px solid #c8e6c9"
+                    }}>
+                      Puntos: {cal.Puntos || 0}
+                    </span>
+                  )}
                   <Badge label={cardTypeLabel} bg={badgeBg} color={badgeColor} />
                   {canManagePredios && selectedSchema && (
                     isEditing ? (

@@ -1674,6 +1674,264 @@ class PrediosController {
         }
       };
 
+      const getIlicode = async (table, id) => {
+        if (!id) return null;
+        try {
+          const res = await query(`SELECT ilicode FROM "${schema}"."${table}" WHERE t_id = $1`, [id]);
+          return res.rows[0]?.ilicode || null;
+        } catch (e) {
+          try {
+            const res = await query(`SELECT ilicode FROM "modelointerno"."${table}" WHERE t_id = $1`, [id]);
+            return res.rows[0]?.ilicode || null;
+          } catch (e2) {
+            return null;
+          }
+        }
+      };
+
+      const calculateScore = async (
+        tipo_calificacion_id,
+        armazon_id,
+        muros_id,
+        cubierta_id,
+        conservacion_estructura_id,
+        fachada_id,
+        cubrimiento_muros_id,
+        piso_id,
+        conservacion_acabados_id,
+        tamanio_banio_id,
+        enchape_banio_id,
+        mobiliario_banio_id,
+        conservacion_banio_id,
+        tamanio_cocina_id,
+        enchape_cocina_id,
+        mobiliario_cocina_id,
+        conservacion_cocina_id,
+        cerchas_complemento_industria_id
+      ) => {
+        const tipoCal = await getIlicode("cuc_calificartipo", tipo_calificacion_id);
+        const arm = await getIlicode("cuc_armazontipo", armazon_id);
+        const mur = await getIlicode("cuc_murostipo", muros_id);
+        const cub = await getIlicode("cuc_cubiertatipo", cubierta_id);
+        const est = await getIlicode("cuc_estadoconservaciontipo", conservacion_estructura_id);
+        const fac = await getIlicode("cuc_fachadatipo", fachada_id);
+        const cubm = await getIlicode("cuc_cubrimiento_murostipo", cubrimiento_muros_id);
+        const pis = await getIlicode("cuc_pisotipo", piso_id);
+        const acab = await getIlicode("cuc_estadoconservaciontipo", conservacion_acabados_id);
+        const tamb = await getIlicode("cuc_tamanio_baniotipo", tamanio_banio_id);
+        const encb = await getIlicode("cuc_enchape_baniotipo", enchape_banio_id);
+        const mobb = await getIlicode("cuc_mobiliario_baniotipo", mobiliario_banio_id);
+        const consb = await getIlicode("cuc_estadoconservaciontipo", conservacion_banio_id);
+        const tamc = await getIlicode("cuc_tamanio_cocinatipo", tamanio_cocina_id);
+        const encc = await getIlicode("cuc_enchape_cocinatipo", enchape_cocina_id);
+        const mobc = await getIlicode("cuc_mobiliario_cocinatipo", mobiliario_cocina_id);
+        const consc = await getIlicode("cuc_estadoconservaciontipo", conservacion_cocina_id);
+        const compl = await getIlicode("cuc_cerchascomplementoindustriatipo", cerchas_complemento_industria_id);
+
+        let tc = 'R';
+        if (tipoCal === 'Residencial') tc = 'R';
+        else if (tipoCal === 'Comercial') tc = 'C';
+        else if (tipoCal === 'Industrial') tc = 'I';
+        else if (tipoCal === 'Institucional') tc = 'T';
+
+        let total = 0;
+
+        // 1. Armazon
+        if (arm === 'Madera') {
+          if (tc === 'R' || tc === 'T') total += 0;
+          else if (tc === 'C' || tc === 'I') total += 4;
+        } else if (arm === 'Prefabricado') {
+          if (tc === 'R' || tc === 'T') total += 1;
+          else if (tc === 'C' || tc === 'I') total += 8;
+        } else if (arm === 'Ladrillo_Bloque') {
+          if (tc === 'R' || tc === 'T') total += 2;
+          else if (tc === 'C' || tc === 'I') total += 12;
+        } else if (arm === 'Concreto_Hasta_Tres_Pisos') {
+          if (tc === 'R' || tc === 'T') total += 4;
+          else if (tc === 'C' || tc === 'I') total += 22;
+        } else if (arm === 'Concreto_Cuatro_O_Mas_Pisos') {
+          if (tc === 'R' || tc === 'T') total += 6;
+          else if (tc === 'C' || tc === 'I') total += 22;
+        }
+
+        // 2. Muro
+        if (mur === 'Materiales_Desecho_Esterilla') total += 0;
+        else if (mur === 'Bahareque_Adobe_Tapia') total += 1;
+        else if (mur === 'Madera') total += 2;
+        else if (mur === 'Concreto_Prefabricado') total += 3;
+        else if (mur === 'Bloque_Ladrillo') total += 4;
+
+        // 3. Cubierta
+        if (cub === 'Materiales_Desecho_Telas_Asfalticas') total += 1;
+        else if (cub === 'Zinc_Teja_De_Barro_Eternit_Rustico') total += 3;
+        else if (cub === 'Entrepiso_Cubierta_Provisional_Prefabricado') total += 6;
+        else if (cub === 'Eternit_O_Teja_De_Barro_Cubierta_Sencilla') total += 9;
+        else if (cub === 'Azotea_Aluminio_Placa_Sencilla_Con_Eternit') total += 13;
+        else if (cub === 'Placa_Impermeabilizada_Cubierta_Lujosa_U_Ornamenta') {
+          if (tc !== 'I') total += 16;
+        }
+
+        // 4. Conservacion Estructura
+        if (est === 'Malo') total += 0;
+        else if (est === 'Regular') total += 2;
+        else if (est === 'Bueno') total += 4;
+        else if (est === 'Excelente') total += 5;
+
+        // 5. Fachada
+        if (fac === 'Pobre') {
+          if (tc === 'R' || tc === 'T') total += 0;
+          else if (tc === 'C' || tc === 'I') total += 2;
+        } else if (fac === 'Sencilla') {
+          if (tc === 'R' || tc === 'T') total += 2;
+          else if (tc === 'C' || tc === 'I') total += 4;
+        } else if (fac === 'Regular') {
+          if (tc === 'R' || tc === 'T') total += 4;
+          else if (tc === 'C' || tc === 'I') total += 6;
+        } else if (fac === 'Buena') {
+          if (tc === 'R' || tc === 'T') total += 6;
+          else if (tc === 'C') total += 8;
+        } else if (fac === 'Lujosa') {
+          if (tc === 'R' || tc === 'T') total += 8;
+          else if (tc === 'C') total += 12;
+        }
+
+        // 6. Cubrimiento Muro
+        if (cubm === 'Sin_Cubrimiento') total += 0;
+        else if (cubm === 'Paniete_Papel_Comun_Ladrillo_Prensado') {
+          if (tc === 'R' || tc === 'T') total += 1;
+          else if (tc === 'C' || tc === 'I') total += 2;
+        } else if (cubm === 'Estuco_Ceramica_Papel_Fino') {
+          if (tc === 'R' || tc === 'T') total += 2;
+          else if (tc === 'C') total += 3;
+        } else if (cubm === 'Madera_Piedra_Ornamental') {
+          if (tc === 'R' || tc === 'T') total += 3;
+          else if (tc === 'C') total += 5;
+        } else if (cubm === 'Marmol_Lujosos_Otros') {
+          if (tc === 'R' || tc === 'T') total += 4;
+          else if (tc === 'C') total += 7;
+        }
+
+        // 7. Piso
+        if (pis === 'Tierra_Pisada') total += 0;
+        else if (pis === 'Cemento_Madera_Burda') {
+          if (tc === 'R' || tc === 'T') total += 2;
+          else if (tc === 'C' || tc === 'I') total += 3;
+        } else if (pis === 'Baldosa_Comun_De_Cemento_Tablon_Ladrillo') {
+          if (tc === 'R' || tc === 'T') total += 3;
+          else if (tc === 'C' || tc === 'I') total += 5;
+        } else if (pis === 'Liston_Machihembrado') {
+          if (tc === 'R' || tc === 'T') total += 4;
+          else if (tc === 'C') total += 7;
+        } else if (pis === 'Tableta_Caucho_Acrilico_Granito_Baldosa_Fina') {
+          if (tc === 'R' || tc === 'T') total += 6;
+          else if (tc === 'C' || tc === 'I') total += 9;
+        } else if (pis === 'Parquet_Alfombra_Retal_De_Marmol') {
+          if (tc === 'R' || tc === 'T') total += 8;
+          else if (tc === 'C') total += 11;
+        } else if (pis === 'Retal_De_Marmol_Marmol_Otros_Lujosos') {
+          if (tc === 'R' || tc === 'T') total += 9;
+          else if (tc === 'C') total += 13;
+        }
+
+        // 8. Conservacion Acabados
+        if (acab === 'Malo') total += 0;
+        else if (acab === 'Regular') total += 2;
+        else if (acab === 'Bueno') total += 4;
+        else if (acab === 'Excelente') total += 5;
+
+        // 9. Tamanio Banio
+        if (tc === 'R' || tc === 'T') {
+          if (tamb === 'Sin_Banio') total += 0;
+          else if (tamb === 'Pequenio') total += 1;
+          else if (tamb === 'Mediano') total += 2;
+          else if (tamb === 'Grande') total += 3;
+        }
+
+        // 10. Enchape Banio
+        if (tc === 'R' || tc === 'T') {
+          if (encb === 'Sin_Cubrimiento') total += 0;
+          else if (encb === 'Paniete_Baldosa_Comun_De_Cemento') total += 1;
+          else if (encb === 'Baldosin_Unicolor_Papel_Comun') total += 2;
+          else if (encb === 'Baldosin_Decorado_Papel_Fino') total += 3;
+          else if (encb === 'Ceramica_Cristanac_Granito') total += 4;
+          else if (encb === 'Marmol_Enchape_Lujoso') total += 5;
+        }
+
+        // 11. Mobiliario Banio
+        if (tc === 'R' || tc === 'T' || tc === 'C') {
+          if (mobb === 'Pobre') total += 0;
+          else if (mobb === 'Sencillo') total += 3;
+          else if (mobb === 'Regular') total += 6;
+          else if (mobb === 'Bueno') total += 9;
+          else if (mobb === 'Lujoso') {
+            if (tc === 'R' || tc === 'T') total += 11;
+            else if (tc === 'C') total += 15;
+          }
+        }
+
+        // 12. Conservacion Banio
+        if (tc === 'R' || tc === 'T') {
+          if (consb === 'Malo') total += 0;
+          else if (consb === 'Regular') total += 2;
+          else if (consb === 'Bueno') total += 4;
+          else if (consb === 'Excelente') total += 5;
+        }
+
+        // 13. Tamanio Cocina
+        if (tc === 'R' || tc === 'T') {
+          if (tamc === 'Sin_Cocina') total += 0;
+          else if (tamc === 'Pequenia') total += 1;
+          else if (tamc === 'Mediana') total += 2;
+          else if (tamc === 'Grande') total += 3;
+        }
+
+        // 14. Enchape Cocina
+        if (tc === 'R' || tc === 'T') {
+          if (encc === 'Sin_Cubrimiento') total += 0;
+          else if (encc === 'Paniete_Baldosa_De_Cemento') total += 1;
+          else if (encc === 'Baldosin_Unicolor_Papel_Comun') total += 2;
+          else if (encc === 'Baldosin_Decorado_Papel_Fino') total += 3;
+          else if (encc === 'Ceramica_Cristanac_Granito') total += 4;
+          else if (encc === 'Marmol_Enchape_Lujoso') total += 5;
+        }
+
+        // 15. Mobiliario Cocina
+        if (tc === 'R' || tc === 'T' || tc === 'C') {
+          if (mobc === 'Pobre') total += 0;
+          else if (mobc === 'Sencillo') {
+            if (tc === 'R' || tc === 'T') total += 2;
+            else if (tc === 'C') total += 3;
+          } else if (mobc === 'Regular') {
+            if (tc === 'R' || tc === 'T') total += 3;
+            else if (tc === 'C') total += 6;
+          } else if (mobc === 'Bueno') {
+            if (tc === 'R' || tc === 'T') total += 4;
+            else if (tc === 'C') total += 9;
+          } else if (mobc === 'Lujoso') {
+            if (tc === 'R' || tc === 'T') total += 6;
+            else if (tc === 'C') total += 13;
+          }
+        }
+
+        // 16. Conservacion Cocina
+        if (tc === 'R' || tc === 'T') {
+          if (consc === 'Malo') total += 0;
+          else if (consc === 'Regular') total += 2;
+          else if (consc === 'Bueno') total += 4;
+          else if (consc === 'Excelente') total += 5;
+        }
+
+        // 17. Complemento Industrial
+        if (tc === 'I') {
+          if (compl === 'Madera') total += 6;
+          else if (compl === 'Metalica_Liviana') total += 12;
+          else if (compl === 'Metalica_Mediana') total += 22;
+          else if (compl === 'Metalica_Pesada') total += 34;
+        }
+
+        return total;
+      };
+
       const basketResult = await query(
         `SELECT t_basket FROM "${schema}".ilc_caracteristicasunidadconstruccion WHERE t_id = $1`,
         [caracteristica]
@@ -1696,6 +1954,14 @@ class PrediosController {
             const defaultMobiliarioBanio = mobiliario_banio || (await getFallbackDefault("cuc_mobiliario_baniotipo"));
             const defaultMobiliarioCocina = mobiliario_cocina || (await getFallbackDefault("cuc_mobiliario_cocinatipo"));
 
+            const calculatedTotal = await calculateScore(
+              defaultTipo, defaultArmazon, defaultMuros, defaultCubierta, defaultConservEstructura,
+              defaultFachada, defaultCubrimiento, defaultPiso, defaultConservAcabados,
+              tamanio_banio || null, enchape_banio || null, mobiliario_banio || null, conservacion_banio || null,
+              tamanio_cocina || null, enchape_cocina || null, mobiliario_cocina || null, conservacion_cocina || null,
+              cerchas_complemento_industria || null
+            );
+
             const insertRes = await query(`
               INSERT INTO "${schema}"."cuc_calificacionconvencional" (
                 t_id, t_basket, t_type, t_ili_tid,
@@ -1705,7 +1971,7 @@ class PrediosController {
                 tamanio_banio, enchape_banio, conservacion_banio,
                 tamanio_cocina, enchape_cocina, conservacion_cocina,
                 cerchas_complemento_industria, altura_cerchas_superior_6m
-              ) VALUES (nextval('"${schema}".t_ili2db_seq'), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0, $15, $16, $17, $18, $19, $20, $21, $22)
+              ) VALUES (nextval('"${schema}".t_ili2db_seq'), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
               RETURNING t_id
             `, [
               basketId,
@@ -1714,6 +1980,7 @@ class PrediosController {
               defaultTipo, defaultArmazon, defaultMuros, defaultCubierta, defaultConservEstructura,
               defaultFachada, defaultCubrimiento, defaultPiso, defaultConservAcabados,
               defaultMobiliarioBanio, defaultMobiliarioCocina,
+              calculatedTotal,
               tamanio_banio || null, enchape_banio || null, conservacion_banio || null,
               tamanio_cocina || null, enchape_cocina || null, conservacion_cocina || null,
               cerchas_complemento_industria || null, altura_cerchas_superior_6m || null
@@ -1783,6 +2050,14 @@ class PrediosController {
           const defaultMobiliarioBanio = mobiliario_banio || (await getFallbackDefault("cuc_mobiliario_baniotipo"));
           const defaultMobiliarioCocina = mobiliario_cocina || (await getFallbackDefault("cuc_mobiliario_cocinatipo"));
 
+          const calculatedTotal = await calculateScore(
+            defaultTipo, defaultArmazon, defaultMuros, defaultCubierta, defaultConservEstructura,
+            defaultFachada, defaultCubrimiento, defaultPiso, defaultConservAcabados,
+            tamanio_banio || null, enchape_banio || null, mobiliario_banio || null, conservacion_banio || null,
+            tamanio_cocina || null, enchape_cocina || null, mobiliario_cocina || null, conservacion_cocina || null,
+            cerchas_complemento_industria || null
+          );
+
           const insertRes = await query(`
             INSERT INTO "${schema}"."cuc_calificacionconvencional" (
               t_id, t_basket, t_type, t_ili_tid,
@@ -1792,7 +2067,7 @@ class PrediosController {
               tamanio_banio, enchape_banio, conservacion_banio,
               tamanio_cocina, enchape_cocina, conservacion_cocina,
               cerchas_complemento_industria, altura_cerchas_superior_6m
-            ) VALUES (nextval('"${schema}".t_ili2db_seq'), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0, $15, $16, $17, $18, $19, $20, $21, $22)
+            ) VALUES (nextval('"${schema}".t_ili2db_seq'), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
             RETURNING t_id
           `, [
             basketId,
@@ -1801,6 +2076,7 @@ class PrediosController {
             defaultTipo, defaultArmazon, defaultMuros, defaultCubierta, defaultConservEstructura,
             defaultFachada, defaultCubrimiento, defaultPiso, defaultConservAcabados,
             defaultMobiliarioBanio, defaultMobiliarioCocina,
+            calculatedTotal,
             tamanio_banio || null, enchape_banio || null, conservacion_banio || null,
             tamanio_cocina || null, enchape_cocina || null, conservacion_cocina || null,
             cerchas_complemento_industria || null, altura_cerchas_superior_6m || null
@@ -1840,6 +2116,41 @@ class PrediosController {
 
       // Si ya existe calificacion convencional, actualizar los campos provistos
       if (convencionalId) {
+        // Consultar valores actuales de la calificacion convencional
+        const currentCalRes = await query(
+          `SELECT * FROM "${schema}"."cuc_calificacionconvencional" WHERE t_id = $1`,
+          [convencionalId]
+        );
+        const currentCal = currentCalRes.rows[0] || {};
+
+        // Combinar con los valores nuevos enviados en req.body
+        const armazonVal = req.body.armazon !== undefined ? req.body.armazon : currentCal.armazon;
+        const murosVal = req.body.muros !== undefined ? req.body.muros : currentCal.muros;
+        const cubiertaVal = req.body.cubierta !== undefined ? req.body.cubierta : currentCal.cubierta;
+        const conservacionEstructuraVal = req.body.conservacion_estructura !== undefined ? req.body.conservacion_estructura : currentCal.conservacion_estructura;
+        const fachadaVal = req.body.fachada !== undefined ? req.body.fachada : currentCal.fachada;
+        const cubrimientoMurosVal = req.body.cubrimiento_muros !== undefined ? req.body.cubrimiento_muros : currentCal.cubrimiento_muros;
+        const pisoVal = req.body.piso !== undefined ? req.body.piso : currentCal.piso;
+        const conservacionAcabadosVal = req.body.conservacion_acabados !== undefined ? req.body.conservacion_acabados : currentCal.conservacion_acabados;
+        const tamanioBanioVal = req.body.tamanio_banio !== undefined ? req.body.tamanio_banio : currentCal.tamanio_banio;
+        const enchapeBanioVal = req.body.enchape_banio !== undefined ? req.body.enchape_banio : currentCal.enchape_banio;
+        const mobiliarioBanioVal = req.body.mobiliario_banio !== undefined ? req.body.mobiliario_banio : currentCal.mobiliario_banio;
+        const conservacionBanioVal = req.body.conservacion_banio !== undefined ? req.body.conservacion_banio : currentCal.conservacion_banio;
+        const tamanioCocinaVal = req.body.tamanio_cocina !== undefined ? req.body.tamanio_cocina : currentCal.tamanio_cocina;
+        const enchapeCocinaVal = req.body.enchape_cocina !== undefined ? req.body.enchape_cocina : currentCal.enchape_cocina;
+        const mobiliarioCocinaVal = req.body.mobiliario_cocina !== undefined ? req.body.mobiliario_cocina : currentCal.mobiliario_cocina;
+        const conservacionCocinaVal = req.body.conservacion_cocina !== undefined ? req.body.conservacion_cocina : currentCal.conservacion_cocina;
+        const cerchasComplementoVal = req.body.cerchas_complemento_industria !== undefined ? req.body.cerchas_complemento_industria : currentCal.cerchas_complemento_industria;
+        const tipoCalificacionVal = req.body.tipo_calificacion !== undefined ? req.body.tipo_calificacion : currentCal.tipo_calificacion;
+
+        const calculatedTotal = await calculateScore(
+          tipoCalificacionVal, armazonVal, murosVal, cubiertaVal, conservacionEstructuraVal,
+          fachadaVal, cubrimientoMurosVal, pisoVal, conservacionAcabadosVal,
+          tamanioBanioVal, enchapeBanioVal, mobiliarioBanioVal, conservacionBanioVal,
+          tamanioCocinaVal, enchapeCocinaVal, mobiliarioCocinaVal, conservacionCocinaVal,
+          cerchasComplementoVal
+        );
+
         const updateFields = [];
         const updateValues = [];
         let pIdx = 1;
@@ -1859,15 +2170,17 @@ class PrediosController {
           }
         });
 
-        if (updateFields.length > 0) {
-          updateValues.push(convencionalId);
-          await query(
-            `UPDATE "${schema}"."cuc_calificacionconvencional" 
-             SET ${updateFields.join(', ')} 
-             WHERE t_id = $${pIdx}`,
-            updateValues
-          );
-        }
+        // Agregar total_calificacion a la actualización
+        updateFields.push(`total_calificacion = $${pIdx++}`);
+        updateValues.push(calculatedTotal);
+
+        updateValues.push(convencionalId);
+        await query(
+          `UPDATE "${schema}"."cuc_calificacionconvencional" 
+           SET ${updateFields.join(', ')} 
+           WHERE t_id = $${pIdx}`,
+          updateValues
+        );
       }
 
       res.json({
