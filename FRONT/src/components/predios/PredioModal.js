@@ -881,7 +881,8 @@ function TabCalificaciones({
     mobiliario_cocina: "",
     conservacion_cocina: "",
     cerchas_complemento_industria: "",
-    altura_cerchas_superior_6m: false
+    altura_cerchas_superior_6m: false,
+    ConvencionalNoConvencional: ""
   });
 
   if (loading) {
@@ -933,7 +934,8 @@ function TabCalificaciones({
       mobiliario_cocina: findId(typeOptions?.cucMobiliarioCocina, cal.mobiliariococina),
       conservacion_cocina: findId(typeOptions?.cucConservacion, cal.ConservacionCocina),
       cerchas_complemento_industria: findId(typeOptions?.cucCerchasComplemento, cal.complementoindustrial),
-      altura_cerchas_superior_6m: cal.AlturaCerchas === 1 || cal.AlturaCerchas === true
+      altura_cerchas_superior_6m: cal.AlturaCerchas === 1 || cal.AlturaCerchas === true,
+      ConvencionalNoConvencional: cal.ConvencionalNoConvencional || "Sin Calificar"
     });
     setEditingCaracteristicaId(cal.caracteristica);
   };
@@ -965,7 +967,8 @@ function TabCalificaciones({
         mobiliario_cocina: calForm.mobiliario_cocina ? parseInt(calForm.mobiliario_cocina, 10) : null,
         conservacion_cocina: calForm.conservacion_cocina ? parseInt(calForm.conservacion_cocina, 10) : null,
         cerchas_complemento_industria: calForm.cerchas_complemento_industria ? parseInt(calForm.cerchas_complemento_industria, 10) : null,
-        altura_cerchas_superior_6m: calForm.altura_cerchas_superior_6m
+        altura_cerchas_superior_6m: calForm.altura_cerchas_superior_6m,
+        ConvencionalNoConvencional: calForm.ConvencionalNoConvencional
       };
 
       const response = await axios.put(
@@ -1117,7 +1120,27 @@ function TabCalificaciones({
                   <RecuadroField label="Tipo Calificación" value={cal.tipocalificaion} isEditing={isEditing}>
                     {renderDropdown("tipo_calificacion", typeOptions?.cucCalificarTipo)}
                   </RecuadroField>
-                  <RecuadroField label="Convencional / No Convencional" value={cal.ConvencionalNoConvencional} isEditing={false} />
+                  <RecuadroField label="Convencional / No Convencional" value={cal.ConvencionalNoConvencional} isEditing={isEditing}>
+                    <select
+                      value={calForm.ConvencionalNoConvencional || ""}
+                      onChange={e => setCalForm({ ...calForm, ConvencionalNoConvencional: e.target.value })}
+                      style={{
+                        width: "100%",
+                        padding: "2px 4px",
+                        background: "#fff",
+                        border: "1px solid #c8c6c0",
+                        borderRadius: 4,
+                        fontSize: 12,
+                        color: "#1a1a18",
+                        outline: "none"
+                      }}
+                    >
+                      <option value="">Seleccionar...</option>
+                      <option value="Convencional">Convencional</option>
+                      <option value="No Convencional">No Convencional</option>
+                      <option value="Tipologia">Tipologia</option>
+                    </select>
+                  </RecuadroField>
                 </div>
 
                 {/* Grupo 1: Estructura */}

@@ -1625,7 +1625,8 @@ class PrediosController {
         mobiliario_cocina,
         conservacion_cocina,
         cerchas_complemento_industria,
-        altura_cerchas_superior_6m
+        altura_cerchas_superior_6m,
+        ConvencionalNoConvencional
       } = req.body;
 
       if (!schema) {
@@ -1641,82 +1642,204 @@ class PrediosController {
       const charCol = colNames.find(c => c.includes('caracteristicasunidadconstruccion')) || 'ilc_caracteristicasunidadconstruccion';
 
       const linkResult = await query(
-        `SELECT t_id, cuc_clfccnndcnstrccion_cuc_calificacionconvencional 
+        `SELECT t_id, 
+                cuc_clfccnndcnstrccion_cuc_calificacionconvencional,
+                cuc_clfccnndcnstrccion_cuc_tipologianoconvencional,
+                cuc_clfccnndcnstrccion_cuc_tipologiaconstruccion 
          FROM "${schema}"."cuc_calificacion_unidadconstruccion" 
          WHERE "${charCol}" = $1`,
         [caracteristica]
       );
 
       let convencionalId = null;
+      let noConvencionalId = null;
+      let tipologiaId = null;
+
       if (linkResult.rows.length > 0) {
         convencionalId = linkResult.rows[0].cuc_clfccnndcnstrccion_cuc_calificacionconvencional;
+        noConvencionalId = linkResult.rows[0].cuc_clfccnndcnstrccion_cuc_tipologianoconvencional;
+        tipologiaId = linkResult.rows[0].cuc_clfccnndcnstrccion_cuc_tipologiaconstruccion;
       }
 
-
-      // 2. Si no existe calificacion convencional, crearla y enlazarla
-      if (!convencionalId) {
-        // Resolver IDs por defecto si no son provistos (para evitar fallas de null/FKey constraints)
-        const getFallbackDefault = async (table) => {
+      // Resolver IDs por defecto si no son provistos (para evitar fallas de null/FKey constraints)
+      const getFallbackDefault = async (table) => {
+        try {
+          return (await query(`SELECT t_id FROM "${schema}"."${table}" LIMIT 1`)).rows[0]?.t_id;
+        } catch (err) {
           try {
-            return (await query(`SELECT t_id FROM "${schema}"."${table}" LIMIT 1`)).rows[0]?.t_id;
-          } catch (err) {
-            try {
-              return (await query(`SELECT t_id FROM "modelointerno"."${table}" LIMIT 1`)).rows[0]?.t_id;
-            } catch (err2) {
-              return null;
-            }
+            return (await query(`SELECT t_id FROM "modelointerno"."${table}" LIMIT 1`)).rows[0]?.t_id;
+          } catch (err2) {
+            return null;
           }
-        };
+        }
+      };
 
-        const defaultTipo = tipo_calificacion || (await getFallbackDefault("cuc_calificartipo"));
-        const defaultArmazon = armazon || (await getFallbackDefault("cuc_armazontipo"));
-        const defaultMuros = muros || (await getFallbackDefault("cuc_murostipo"));
-        const defaultCubierta = cubierta || (await getFallbackDefault("cuc_cubiertatipo"));
-        const defaultConservEstructura = conservacion_estructura || (await getFallbackDefault("cuc_estadoconservaciontipo"));
-        const defaultFachada = fachada || (await getFallbackDefault("cuc_fachadatipo"));
-        const defaultCubrimiento = cubrimiento_muros || (await getFallbackDefault("cuc_cubrimiento_murostipo"));
-        const defaultPiso = piso || (await getFallbackDefault("cuc_pisotipo"));
-        const defaultConservAcabados = conservacion_acabados || defaultConservEstructura || (await getFallbackDefault("cuc_estadoconservaciontipo"));
-        const defaultMobiliarioBanio = mobiliario_banio || (await getFallbackDefault("cuc_mobiliario_baniotipo"));
-        const defaultMobiliarioCocina = mobiliario_cocina || (await getFallbackDefault("cuc_mobiliario_cocinatipo"));
+      const basketResult = await query(
+        `SELECT t_basket FROM "${schema}".ilc_caracteristicasunidadconstruccion WHERE t_id = $1`,
+        [caracteristica]
+      );
+      const basketId = basketResult.rows[0]?.t_basket || 2;
 
-        const insertRes = await query(`
-          INSERT INTO "${schema}"."cuc_calificacionconvencional" (
-            tipo_calificacion, armazon, muros, cubierta, conservacion_estructura,
-            fachada, cubrimiento_muros, piso, conservacion_acabados,
-            mobiliario_banio, mobiliario_cocina, total_calificacion,
-            tamanio_banio, enchape_banio, conservacion_banio,
-            tamanio_cocina, enchape_cocina, conservacion_cocina,
-            cerchas_complemento_industria, altura_cerchas_superior_6m
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, $12, $13, $14, $15, $16, $17, $18, $19)
-          RETURNING t_id
-        `, [
-          defaultTipo, defaultArmazon, defaultMuros, defaultCubierta, defaultConservEstructura,
-          defaultFachada, defaultCubrimiento, defaultPiso, defaultConservAcabados,
-          defaultMobiliarioBanio, defaultMobiliarioCocina,
-          tamanio_banio || null, enchape_banio || null, conservacion_banio || null,
-          tamanio_cocina || null, enchape_cocina || null, conservacion_cocina || null,
-          cerchas_complemento_industria || null, altura_cerchas_superior_6m || null
-        ]);
+      // Evaluar tipo si fue enviado
+      if (ConvencionalNoConvencional !== undefined) {
+        if (ConvencionalNoConvencional === 'Convencional') {
+          if (!convencionalId) {
+            const defaultTipo = tipo_calificacion || (await getFallbackDefault("cuc_calificartipo"));
+            const defaultArmazon = armazon || (await getFallbackDefault("cuc_armazontipo"));
+            const defaultMuros = muros || (await getFallbackDefault("cuc_murostipo"));
+            const defaultCubierta = cubierta || (await getFallbackDefault("cuc_cubiertatipo"));
+            const defaultConservEstructura = conservacion_estructura || (await getFallbackDefault("cuc_estadoconservaciontipo"));
+            const defaultFachada = fachada || (await getFallbackDefault("cuc_fachadatipo"));
+            const defaultCubrimiento = cubrimiento_muros || (await getFallbackDefault("cuc_cubrimiento_murostipo"));
+            const defaultPiso = piso || (await getFallbackDefault("cuc_pisotipo"));
+            const defaultConservAcabados = conservacion_acabados || defaultConservEstructura || (await getFallbackDefault("cuc_estadoconservaciontipo"));
+            const defaultMobiliarioBanio = mobiliario_banio || (await getFallbackDefault("cuc_mobiliario_baniotipo"));
+            const defaultMobiliarioCocina = mobiliario_cocina || (await getFallbackDefault("cuc_mobiliario_cocinatipo"));
 
-        convencionalId = insertRes.rows[0].t_id;
-
-        if (linkResult.rows.length > 0) {
-          await query(`
-            UPDATE "${schema}"."cuc_calificacion_unidadconstruccion" 
-            SET cuc_clfccnndcnstrccion_cuc_calificacionconvencional = $1 
-            WHERE t_id = $2
-          `, [convencionalId, linkResult.rows[0].t_id]);
+            const insertRes = await query(`
+              INSERT INTO "${schema}"."cuc_calificacionconvencional" (
+                t_id, t_basket, t_type, t_ili_tid,
+                tipo_calificacion, armazon, muros, cubierta, conservacion_estructura,
+                fachada, cubrimiento_muros, piso, conservacion_acabados,
+                mobiliario_banio, mobiliario_cocina, total_calificacion,
+                tamanio_banio, enchape_banio, conservacion_banio,
+                tamanio_cocina, enchape_cocina, conservacion_cocina,
+                cerchas_complemento_industria, altura_cerchas_superior_6m
+              ) VALUES (nextval('"${schema}".t_ili2db_seq'), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0, $15, $16, $17, $18, $19, $20, $21, $22)
+              RETURNING t_id
+            `, [
+              basketId,
+              'cuc_calificacionconvencional',
+              require('crypto').randomUUID(),
+              defaultTipo, defaultArmazon, defaultMuros, defaultCubierta, defaultConservEstructura,
+              defaultFachada, defaultCubrimiento, defaultPiso, defaultConservAcabados,
+              defaultMobiliarioBanio, defaultMobiliarioCocina,
+              tamanio_banio || null, enchape_banio || null, conservacion_banio || null,
+              tamanio_cocina || null, enchape_cocina || null, conservacion_cocina || null,
+              cerchas_complemento_industria || null, altura_cerchas_superior_6m || null
+            ]);
+            convencionalId = insertRes.rows[0].t_id;
+          }
+          noConvencionalId = null;
+          tipologiaId = null;
+        } else if (ConvencionalNoConvencional === 'No Convencional') {
+          if (!noConvencionalId) {
+            const defaultTipoAnexo = await getFallbackDefault("cuc_anexotipo");
+            const defaultConservAnexo = await getFallbackDefault("cuc_estadoconservaciontipologiatipo");
+            const resNo = await query(`
+              INSERT INTO "${schema}"."cuc_tipologianoconvencional" (
+                t_id, t_basket, t_type, t_ili_tid, tipo_anexo, conservacion_anexo
+              ) VALUES (nextval('"${schema}".t_ili2db_seq'), $1, $2, $3, $4, $5)
+              RETURNING t_id
+            `, [
+              basketId,
+              'cuc_tipologianoconvencional',
+              require('crypto').randomUUID(),
+              defaultTipoAnexo,
+              defaultConservAnexo
+            ]);
+            noConvencionalId = resNo.rows[0].t_id;
+          }
+          convencionalId = null;
+          tipologiaId = null;
+        } else if (ConvencionalNoConvencional === 'Tipologia') {
+          if (!tipologiaId) {
+            const defaultTipoTipologia = await getFallbackDefault("cuc_tipologiatipo");
+            const defaultConserv = await getFallbackDefault("cuc_estadoconservaciontipologiatipo") || await getFallbackDefault("cuc_estadoconservaciontipo");
+            const resTipo = await query(`
+              INSERT INTO "${schema}"."cuc_tipologiaconstruccion" (
+                t_id, t_basket, t_type, t_ili_tid, tipo_tipologia, conservacion
+              ) VALUES (nextval('"${schema}".t_ili2db_seq'), $1, $2, $3, $4, $5)
+              RETURNING t_id
+            `, [
+              basketId,
+              'cuc_tipologiaconstruccion',
+              require('crypto').randomUUID(),
+              defaultTipoTipologia,
+              defaultConserv
+            ]);
+            tipologiaId = resTipo.rows[0].t_id;
+          }
+          convencionalId = null;
+          noConvencionalId = null;
         } else {
-          await query(`
-            INSERT INTO "${schema}"."cuc_calificacion_unidadconstruccion" (
-              "${charCol}",
-              cuc_clfccnndcnstrccion_cuc_calificacionconvencional
-            ) VALUES ($1, $2)
-          `, [caracteristica, convencionalId]);
+          // 'Sin Calificar'
+          convencionalId = null;
+          noConvencionalId = null;
+          tipologiaId = null;
         }
       } else {
-        // 3. Si ya existe calificacion convencional, actualizar los campos provistos
+        // Si no se especifica el tipo, nos aseguramos de crear el convencional si no existe
+        if (!convencionalId && !noConvencionalId && !tipologiaId) {
+          const defaultTipo = tipo_calificacion || (await getFallbackDefault("cuc_calificartipo"));
+          const defaultArmazon = armazon || (await getFallbackDefault("cuc_armazontipo"));
+          const defaultMuros = muros || (await getFallbackDefault("cuc_murostipo"));
+          const defaultCubierta = cubierta || (await getFallbackDefault("cuc_cubiertatipo"));
+          const defaultConservEstructura = conservacion_estructura || (await getFallbackDefault("cuc_estadoconservaciontipo"));
+          const defaultFachada = fachada || (await getFallbackDefault("cuc_fachadatipo"));
+          const defaultCubrimiento = cubrimiento_muros || (await getFallbackDefault("cuc_cubrimiento_murostipo"));
+          const defaultPiso = piso || (await getFallbackDefault("cuc_pisotipo"));
+          const defaultConservAcabados = conservacion_acabados || defaultConservEstructura || (await getFallbackDefault("cuc_estadoconservaciontipo"));
+          const defaultMobiliarioBanio = mobiliario_banio || (await getFallbackDefault("cuc_mobiliario_baniotipo"));
+          const defaultMobiliarioCocina = mobiliario_cocina || (await getFallbackDefault("cuc_mobiliario_cocinatipo"));
+
+          const insertRes = await query(`
+            INSERT INTO "${schema}"."cuc_calificacionconvencional" (
+              t_id, t_basket, t_type, t_ili_tid,
+              tipo_calificacion, armazon, muros, cubierta, conservacion_estructura,
+              fachada, cubrimiento_muros, piso, conservacion_acabados,
+              mobiliario_banio, mobiliario_cocina, total_calificacion,
+              tamanio_banio, enchape_banio, conservacion_banio,
+              tamanio_cocina, enchape_cocina, conservacion_cocina,
+              cerchas_complemento_industria, altura_cerchas_superior_6m
+            ) VALUES (nextval('"${schema}".t_ili2db_seq'), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0, $15, $16, $17, $18, $19, $20, $21, $22)
+            RETURNING t_id
+          `, [
+            basketId,
+            'cuc_calificacionconvencional',
+            require('crypto').randomUUID(),
+            defaultTipo, defaultArmazon, defaultMuros, defaultCubierta, defaultConservEstructura,
+            defaultFachada, defaultCubrimiento, defaultPiso, defaultConservAcabados,
+            defaultMobiliarioBanio, defaultMobiliarioCocina,
+            tamanio_banio || null, enchape_banio || null, conservacion_banio || null,
+            tamanio_cocina || null, enchape_cocina || null, conservacion_cocina || null,
+            cerchas_complemento_industria || null, altura_cerchas_superior_6m || null
+          ]);
+          convencionalId = insertRes.rows[0].t_id;
+        }
+      }
+
+      // Guardar el enlace en cuc_calificacion_unidadconstruccion
+      if (linkResult.rows.length > 0) {
+        await query(`
+          UPDATE "${schema}"."cuc_calificacion_unidadconstruccion" 
+          SET cuc_clfccnndcnstrccion_cuc_calificacionconvencional = $1,
+              cuc_clfccnndcnstrccion_cuc_tipologianoconvencional = $2,
+              cuc_clfccnndcnstrccion_cuc_tipologiaconstruccion = $3
+          WHERE t_id = $2
+        `.replace('WHERE t_id = $2', 'WHERE t_id = $4'), [convencionalId, noConvencionalId, tipologiaId, linkResult.rows[0].t_id]);
+      } else {
+        await query(`
+          INSERT INTO "${schema}"."cuc_calificacion_unidadconstruccion" (
+            t_id, t_basket, t_type, t_ili_tid,
+            "${charCol}",
+            cuc_clfccnndcnstrccion_cuc_calificacionconvencional,
+            cuc_clfccnndcnstrccion_cuc_tipologianoconvencional,
+            cuc_clfccnndcnstrccion_cuc_tipologiaconstruccion
+          ) VALUES (nextval('"${schema}".t_ili2db_seq'), $1, $2, $3, $4, $5, $6, $7)
+        `, [
+          basketId,
+          'cuc_calificacion_unidadconstruccion',
+          require('crypto').randomUUID(),
+          caracteristica,
+          convencionalId,
+          noConvencionalId,
+          tipologiaId
+        ]);
+      }
+
+      // Si ya existe calificacion convencional, actualizar los campos provistos
+      if (convencionalId) {
         const updateFields = [];
         const updateValues = [];
         let pIdx = 1;
@@ -1749,7 +1872,7 @@ class PrediosController {
 
       res.json({
         success: true,
-        message: 'Calificación convencional actualizada exitosamente'
+        message: 'Calificaciones actualizadas exitosamente'
       });
 
     } catch (error) {
