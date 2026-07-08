@@ -6,8 +6,8 @@ export const mapPredio = (p) => {
   const npn = p.Npn || p.npn || p.NumCedulaCatastral || p.numero_predial || p.numero_predial_nacional || '';
   const departamento = p.Departamento || p.DepartamentoPredio || p.departamento || '';
   const municipio = p.Municipio || p.MunicipioPredio || p.municipio || '';
-  const circulo = p.circulo || p.codigo_orip || '';
-  const matriculaInmobiliaria = p.MatriculaInmobiliaria || p.matricula_inmobiliaria || '';
+  const circulo = p.circulo || p.codigo_orip || p.Circulo || '';
+  const matriculaInmobiliaria = p.MatriculaInmobiliaria || p.matricula_inmobiliaria || p.matriculaInmobiliaria || '';
   const libro = p.Libro || p.libro || '';
   const tomo = p.Tomo || p.tomo || '';
   const pagina = p.Pagina || p.pagina || '';

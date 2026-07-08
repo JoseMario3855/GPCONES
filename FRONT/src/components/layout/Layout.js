@@ -160,11 +160,13 @@ const Layout = () => {
       icon: <UploadOutlined />,
       label: 'Carga de Archivos',
       children: [
+        /*
         {
           key: '/xtf/upload',
           icon: <UploadOutlined />,
           label: 'Cargar XTF'
         },
+        */
         {
           key: '/xtf/history',
           icon: <FileTextOutlined />,

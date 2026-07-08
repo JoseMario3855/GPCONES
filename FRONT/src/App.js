@@ -107,11 +107,11 @@ function App() {
           <Route path="audit" element={<AuditLogs />} />
           
                                 {/* Carga de Archivos XTF */}
-                      <Route path="xtf/upload" element={<XTFUpload />} />
-                      <Route path="xtf/history" element={<UploadHistory />} />
-                      <Route path="xtf/validation" element={<XTFValidation />} />
-                      <Route path="xtf/import-excel" element={<IGACExcelImport />} />
-                      <Route path="xtf/excel-to-xtf" element={<IGACExcelImport />} />
+          {/* <Route path="xtf/upload" element={<XTFUpload />} /> */}
+          <Route path="xtf/history" element={<UploadHistory />} />
+          <Route path="xtf/validation" element={<XTFValidation />} />
+          <Route path="xtf/import-excel" element={<IGACExcelImport />} />
+          <Route path="xtf/excel-to-xtf" element={<IGACExcelImport />} />
                       
                       {/* Gestión ILI/XTF */}
                       <Route path="ili" element={<ILIManager />} />

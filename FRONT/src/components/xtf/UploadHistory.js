@@ -62,10 +62,10 @@ const UploadHistory = () => {
 
       const response = await axios.get('/api/xtf/uploads', { params });
       if (response.data.success) {
-        setUploads(response.data.data.uploads || []);
+        setUploads(response.data.data || []);
         setPagination(prev => ({
           ...prev,
-          total: response.data.data.pagination?.total || 0
+          total: response.data.pagination?.total || 0
         }));
       }
     } catch (error) {

@@ -200,7 +200,7 @@ const PredioForm = ({ predioId: propPredioId = null, schema: propSchema = null, 
         nombre: form.nombre || null,
         departamento: form.departamento || null,
         municipio: form.municipio,
-        codigo_orip: form.codigo_orip || null,
+        codigo_orip: (form.codigo_orip && ['01', '1', '001'].includes(String(form.codigo_orip).trim())) ? '801' : (form.codigo_orip || null),
         condicion_predio: form.condicion_predio ? parseInt(form.condicion_predio, 10) : null,
         tipo_predio: form.tipo_predio ? parseInt(form.tipo_predio, 10) : null,
         uso_predio: form.uso_predio ? parseInt(form.uso_predio, 10) : null,
@@ -395,7 +395,7 @@ const PredioForm = ({ predioId: propPredioId = null, schema: propSchema = null, 
                   <option value="">Seleccionar...</option>
                   {typeOptions?.condiciones?.map(opt => (
                     <option key={opt.t_id} value={String(opt.t_id)}>
-                      {opt.dispname || opt.ilicode}
+                      {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                     </option>
                   ))}
                 </select>
@@ -410,7 +410,7 @@ const PredioForm = ({ predioId: propPredioId = null, schema: propSchema = null, 
                   <option value="">Seleccionar...</option>
                   {typeOptions?.tipos?.map(opt => (
                     <option key={opt.t_id} value={String(opt.t_id)}>
-                      {opt.dispname || opt.ilicode}
+                      {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                     </option>
                   ))}
                 </select>
@@ -425,7 +425,7 @@ const PredioForm = ({ predioId: propPredioId = null, schema: propSchema = null, 
                   <option value="">Seleccionar...</option>
                   {typeOptions?.destinaciones?.map(opt => (
                     <option key={opt.t_id} value={String(opt.t_id)}>
-                      {opt.dispname || opt.ilicode}
+                      {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                     </option>
                   ))}
                 </select>
@@ -459,7 +459,7 @@ const PredioForm = ({ predioId: propPredioId = null, schema: propSchema = null, 
                     <option value="">Seleccionar...</option>
                     {typeOptions?.documentoTypes?.map(opt => (
                       <option key={opt.t_id} value={opt.ilicode || opt.dispname}>
-                        {opt.dispname || opt.ilicode}
+                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     )) || (
                       <>

@@ -1,6 +1,120 @@
 const { query } = require('../config/database');
 const { validationResult } = require('express-validator');
 
+async function getOwnerSnapshot(schema_name, rrr, isStandard, hasFraccion) {
+  try {
+    let sqlQuery = "";
+    if (isStandard) {
+      sqlQuery = `
+        SELECT
+            tipogrupo.ilicode                              AS "TipoAgrupacion",
+            derecho.t_id                                   AS "rrr",
+            predio.numero_predial                          AS "Npn",
+            tipoderecho.ilicode                            AS "TipoDerecho",
+            COALESCE(tipodoc_directo.ilicode, 
+                     tipodoc_miembro.ilicode)              AS "TipoDocumento",
+            COALESCE(interesado_directo.documento_identidad,
+                     miembro.documento_identidad)          AS "Documento",
+            COALESCE(interesado_directo.primer_nombre,
+                     miembro.primer_nombre)                AS "PrimerNombre",
+            COALESCE(interesado_directo.segundo_nombre,
+                     miembro.segundo_nombre)               AS "SegundoNombre",
+            COALESCE(interesado_directo.primer_apellido,
+                     miembro.primer_apellido)              AS "PrimerApellido",
+            COALESCE(interesado_directo.segundo_apellido,
+                     miembro.segundo_apellido)             AS "SegundoApellido",
+            COALESCE(interesado_directo.razon_social,
+                     miembro.razon_social)                 AS "RazonSocial",
+            CASE 
+              WHEN miembros.participacion IS NOT NULL THEN miembros.participacion * 100
+              WHEN derecho.fraccion_derecho IS NOT NULL THEN CAST(derecho.fraccion_derecho AS NUMERIC) * 100
+              ELSE 100 
+            END                                            AS "Participacion"
+        FROM "${schema_name}".lc_derecho derecho
+        INNER JOIN "${schema_name}".lc_predio predio ON predio.t_id = derecho.unidad
+        LEFT JOIN "${schema_name}".lc_derechotipo tipoderecho ON tipoderecho.t_id = derecho.tipo
+        LEFT JOIN "${schema_name}".cr_interesado interesado_directo ON interesado_directo.t_id = derecho.interesado_cr_interesado
+        LEFT JOIN "${schema_name}".cr_documentotipo tipodoc_directo ON tipodoc_directo.t_id = interesado_directo.tipo_documento
+        LEFT JOIN "${schema_name}".cr_agrupacioninteresados agrupacion ON agrupacion.t_id = derecho.interesado_cr_agrupacioninteresados
+        LEFT JOIN "${schema_name}".col_grupointeresadotipo tipogrupo ON tipogrupo.t_id = agrupacion.tipo
+        LEFT JOIN "${schema_name}".col_miembros miembros ON miembros.agrupacion = agrupacion.t_id
+        LEFT JOIN "${schema_name}".cr_interesado miembro ON miembro.t_id = miembros.interesado_cr_interesado
+        LEFT JOIN "${schema_name}".cr_documentotipo tipodoc_miembro ON tipodoc_miembro.t_id = miembro.tipo_documento
+        WHERE derecho.t_id = $1
+        LIMIT 1
+      `;
+    } else {
+      sqlQuery = `
+        SELECT
+            tipogrupo.ilicode                              AS "TipoAgrupacion",
+            derecho.t_id                                   AS "rrr",
+            predio.numero_predial_nacional                 AS "Npn",
+            tipoderecho.ilicode                            AS "TipoDerecho",
+            COALESCE(tipodoc_directo.ilicode, 
+                     tipodoc_miembro.ilicode)              AS "TipoDocumento",
+            COALESCE(interesado_directo.documento_identidad,
+                     miembro.documento_identidad)          AS "Documento",
+            COALESCE(interesado_directo.primer_nombre,
+                     miembro.primer_nombre)                AS "PrimerNombre",
+            COALESCE(interesado_directo.segundo_nombre,
+                     miembro.segundo_nombre)               AS "SegundoNombre",
+            COALESCE(interesado_directo.primer_apellido,
+                     miembro.primer_apellido)              AS "PrimerApellido",
+            COALESCE(interesado_directo.segundo_apellido,
+                     miembro.segundo_apellido)             AS "SegundoApellido",
+            COALESCE(interesado_directo.razon_social,
+                     miembro.razon_social)                 AS "RazonSocial",
+            CASE 
+              WHEN miembros.participacion IS NOT NULL THEN miembros.participacion * 100
+              WHEN derecho.fraccion_derecho IS NOT NULL THEN CAST(derecho.fraccion_derecho AS NUMERIC) * 100
+              ELSE 100 
+            END                                            AS "Participacion"
+        FROM "${schema_name}".ilc_derecho derecho
+        INNER JOIN "${schema_name}".ilc_predio predio ON predio.t_id = derecho.unidad
+        LEFT JOIN "${schema_name}".ilc_derechocatastraltipo tipoderecho ON tipoderecho.t_id = derecho.tipo
+        LEFT JOIN "${schema_name}".col_rrrinteresado colrinteresado ON colrinteresado.rrr = derecho.t_id
+        LEFT JOIN "${schema_name}".ilc_interesado interesado_directo ON interesado_directo.t_id = colrinteresado.interesado_ilc_interesado
+        LEFT JOIN "${schema_name}".cr_documentotipo tipodoc_directo ON tipodoc_directo.t_id = interesado_directo.tipo_documento
+        LEFT JOIN "${schema_name}".cr_agrupacioninteresados agrupacion ON agrupacion.t_id = colrinteresado.interesado_cr_agrupacioninteresados
+        LEFT JOIN "${schema_name}".col_grupointeresadotipo tipogrupo ON tipogrupo.t_id = agrupacion.tipo
+        LEFT JOIN "${schema_name}".col_miembros miembros ON miembros.agrupacion = agrupacion.t_id
+        LEFT JOIN "${schema_name}".ilc_interesado miembro ON miembro.t_id = miembros.interesado_ilc_interesado
+        LEFT JOIN "${schema_name}".cr_documentotipo tipodoc_miembro ON tipodoc_miembro.t_id = miembro.tipo_documento
+        WHERE derecho.t_id = $1
+        LIMIT 1
+      `;
+    }
+
+    const res = await query(sqlQuery, [rrr]);
+    if (res.rows.length > 0) {
+      const row = res.rows[0];
+      const isNIT = row.TipoDocumento && row.TipoDocumento.toUpperCase() === 'NIT';
+      if (isNIT) {
+        let rSocial = row.RazonSocial;
+        if (!rSocial || rSocial.trim() === '') {
+          const nameParts = [
+            row.PrimerNombre,
+            row.SegundoNombre,
+            row.PrimerApellido,
+            row.SegundoApellido
+          ].filter(p => p && p.trim() !== '');
+          rSocial = nameParts.join(' ');
+        }
+        row.RazonSocial = rSocial || null;
+        row.PrimerNombre = null;
+        row.SegundoNombre = null;
+        row.PrimerApellido = null;
+        row.SegundoApellido = null;
+      }
+      return row;
+    }
+    return null;
+  } catch (e) {
+    console.warn(`[getOwnerSnapshot] Error al obtener snapshot de propietario/derecho RRR ${rrr}:`, e.message);
+    return null;
+  }
+}
+
 class PropietariosController {
   
   // Obtener la lista de propietarios, con soporte para consultas dinámicas en LADM-COL
@@ -251,10 +365,35 @@ class PropietariosController {
       const countResult = await query(countQuery, countParams);
       const totalCount = parseInt(countResult.rows[0].total) || 0;
 
+      const processedRows = result.rows.map(row => {
+        const isNIT = row.TipoDocumento && row.TipoDocumento.toUpperCase() === 'NIT';
+        if (isNIT) {
+          let rSocial = row.RazonSocial;
+          if (!rSocial || rSocial.trim() === '') {
+            const nameParts = [
+              row.PrimerNombre,
+              row.SegundoNombre,
+              row.PrimerApellido,
+              row.SegundoApellido
+            ].filter(p => p && p.trim() !== '');
+            rSocial = nameParts.join(' ');
+          }
+          return {
+            ...row,
+            RazonSocial: rSocial || null,
+            PrimerNombre: null,
+            SegundoNombre: null,
+            PrimerApellido: null,
+            SegundoApellido: null
+          };
+        }
+        return row;
+      });
+
       res.json({
         success: true,
         data: {
-          propietarios: result.rows,
+          propietarios: processedRows,
           pagination: {
             page: parseInt(page),
             limit: parseInt(limit),
@@ -324,7 +463,65 @@ class PropietariosController {
       `, [schema_name]);
       const isStandard = standardResult.rows[0]?.exists || false;
 
+      // Obtener el estado anterior para auditoría
+      const colCheckSnapshot = await query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_schema = $1 AND table_name = $2 AND column_name = 'fraccion_derecho'
+        );
+      `, [schema_name, isStandard ? 'lc_derecho' : 'ilc_derecho']);
+      const hasFraccionSnapshot = colCheckSnapshot.rows[0]?.exists || false;
+      const oldState = await getOwnerSnapshot(schema_name, rrr, isStandard, hasFraccionSnapshot);
+
       const prefix = isStandard ? 'lc_' : 'ilc_';
+      const tableDerecho = isStandard ? 'lc_derecho' : 'ilc_derecho';
+
+      if (participacion !== undefined && participacion !== null) {
+        const rrrRes = await query(
+          `SELECT unidad FROM "${schema_name}"."${tableDerecho}" WHERE t_id = $1`,
+          [rrr]
+        );
+        const predio_id = rrrRes.rows[0]?.unidad;
+
+        if (predio_id) {
+          // Verificar si existe la columna fraccion_derecho antes de realizar la suma
+          const colCheck = await query(`
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_schema = $1 AND table_name = $2 AND column_name = 'fraccion_derecho'
+          `, [schema_name, tableDerecho]);
+          const hasFraccionCol = colCheck.rows.length > 0;
+
+          if (hasFraccionCol) {
+            const otherRightsRes = await query(
+              `SELECT t_id, fraccion_derecho FROM "${schema_name}"."${tableDerecho}" WHERE unidad = $1 AND t_id != $2`,
+              [predio_id, rrr]
+            );
+            let otherSum = 0;
+            for (const r of otherRightsRes.rows) {
+              otherSum += parseFloat(r.fraccion_derecho || 0) * 100;
+            }
+
+            const newPart = parseFloat(participacion);
+
+            const oldRightRes = await query(
+              `SELECT fraccion_derecho FROM "${schema_name}"."${tableDerecho}" WHERE t_id = $1`,
+              [rrr]
+            );
+            const oldPartVal = oldRightRes.rows[0]?.fraccion_derecho;
+            const oldPart = oldPartVal !== null && oldPartVal !== undefined 
+              ? parseFloat(oldPartVal) * 100 
+              : 100;
+
+            if (otherSum + newPart > 100.01 && !(newPart < oldPart)) {
+              return res.status(400).json({
+                success: false,
+                error: 'Suma de participaciones excede el 100%',
+                message: `La suma de participaciones para este predio no puede superar el 100%. Las participaciones de los otros propietarios suman ${otherSum.toFixed(2)}%, e intentas asignar ${newPart.toFixed(2)}% (Total: ${(otherSum + newPart).toFixed(2)}%).`
+              });
+            }
+          }
+        }
+      }
 
       // 2. Encontrar el interesado_id y miembro_id asociado al rrr y al current_documento
       let interesadoId = null;
@@ -564,6 +761,22 @@ class PropietariosController {
         }
       }
 
+      // Registrar log de auditoría
+      const newState = await getOwnerSnapshot(schema_name, rrr, isStandard, hasFraccionSnapshot);
+      await query(
+        `INSERT INTO audit_logs (user_id, action, module, details, is_critical, previous_state, new_state) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          req.user.id,
+          'MODIFICACION_PROPIETARIO',
+          'PROPIETARIOS',
+          `Propietario con RRR ${rrr} y NPN ${oldState?.Npn || 'desconocido'} en esquema "${schema_name}" actualizado.`,
+          true,
+          JSON.stringify(oldState),
+          JSON.stringify(newState)
+        ]
+      );
+
       res.json({
         success: true,
         message: 'Propietario actualizado exitosamente'
@@ -629,6 +842,33 @@ class PropietariosController {
       const tableInteresado = isStandard ? 'cr_interesado' : 'ilc_interesado';
       const tableDerecho = isStandard ? 'lc_derecho' : 'ilc_derecho';
       const tableFuente = isStandard ? 'lc_fuenteadministrativa' : 'ilc_fuenteadministrativa';
+
+      // Validar que la suma de participaciones no supere el 100% (si la columna fraccion_derecho existe)
+      const colCheck = await query(`
+        SELECT column_name FROM information_schema.columns 
+        WHERE table_schema = $1 AND table_name = $2 AND column_name = 'fraccion_derecho'
+      `, [schema_name, tableDerecho]);
+      const hasFraccionCol = colCheck.rows.length > 0;
+
+      if (hasFraccionCol) {
+        const existingRightsRes = await query(
+          `SELECT t_id, fraccion_derecho FROM "${schema_name}"."${tableDerecho}" WHERE unidad = $1`,
+          [predio_id]
+        );
+        let existingSum = 0;
+        for (const r of existingRightsRes.rows) {
+          existingSum += parseFloat(r.fraccion_derecho || 0) * 100;
+        }
+        
+        const newPart = participacion ? parseFloat(participacion) : 100;
+        if (existingSum + newPart > 100.01) {
+          return res.status(400).json({
+            success: false,
+            error: 'Suma de participaciones excede el 100%',
+            message: `La suma de participaciones para este predio no puede superar el 100%. Las participaciones existentes suman ${existingSum.toFixed(2)}%, e intentas asignar ${newPart.toFixed(2)}% (Total: ${(existingSum + newPart).toFixed(2)}%).`
+          });
+        }
+      }
 
       // 2. Insertar Interesado
       const intTid = crypto.randomUUID();
@@ -788,6 +1028,30 @@ class PropietariosController {
           rrr, fuente_administrativa
         ) VALUES ($1, $2)
       `, [rrrId, fuenteId]);
+
+      // Registrar log de auditoría
+      const colCheckSnapshot = await query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_schema = $1 AND table_name = $2 AND column_name = 'fraccion_derecho'
+        );
+      `, [schema_name, isStandard ? 'lc_derecho' : 'ilc_derecho']);
+      const hasFraccionSnapshot = colCheckSnapshot.rows[0]?.exists || false;
+      const newState = await getOwnerSnapshot(schema_name, rrrId, isStandard, hasFraccionSnapshot);
+
+      await query(
+        `INSERT INTO audit_logs (user_id, action, module, details, is_critical, previous_state, new_state) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          req.user.id,
+          'CREACION_PROPIETARIO',
+          'PROPIETARIOS',
+          `Propietario creado con RRR ${rrrId} y NPN ${newState?.Npn || 'desconocido'} en esquema "${schema_name}".`,
+          true,
+          null,
+          JSON.stringify(newState)
+        ]
+      );
 
       res.status(201).json({
         success: true,

@@ -232,7 +232,11 @@ function TabFicha({ data, canManagePredios, selectedSchema, onEdit }) {
         <Metric label="Círculo ORIP" value={data.circulo} mono />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 8, marginBottom: 18 }}>
-        <Metric label="Matrícula inmobiliaria" value={data.matriculaInmobiliaria} mono />
+        <Metric 
+          label="Matrícula inmobiliaria" 
+          value={data.circulo && data.matriculaInmobiliaria ? `${data.circulo}-${data.matriculaInmobiliaria}` : (data.matriculaInmobiliaria || "—")} 
+          mono 
+        />
         <Metric label="Libro" value={data.libro} mono />
         <Metric label="Tomo" value={data.tomo} mono />
         <Metric label="Página" value={data.pagina} mono />
@@ -1001,7 +1005,7 @@ function TabCalificaciones({
         <option value="">Seleccionar...</option>
         {list?.map(opt => (
           <option key={opt.t_id} value={String(opt.t_id)}>
-            {opt.dispname || opt.ilicode}
+            {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
           </option>
         ))}
       </select>
@@ -1550,6 +1554,9 @@ export default function PredioModal({
     disponibilidad: "",
   });
 
+  const selectedDocTypeOpt = typeOptions?.documentoTypes?.find(opt => String(opt.t_id) === String(propForm.tipoDocumento));
+  const isFormNIT = selectedDocTypeOpt && selectedDocTypeOpt.ilicode === 'NIT';
+
   // Estados de edición de construcciones
   const [editingConstruccion, setEditingConstruccion] = useState(null);
   const [constForm, setConstForm] = useState({
@@ -1649,12 +1656,25 @@ export default function PredioModal({
       }
     }
 
+    const isNIT = defaultDocTypeOpt && defaultDocTypeOpt.ilicode === 'NIT';
+
+    let rSocial = p.razonSocial || "";
+    if (isNIT && (!rSocial || rSocial.trim() === "")) {
+      const nameParts = [
+        p.primerNombre,
+        p.segundoNombre,
+        p.primerApellido,
+        p.segundoApellido
+      ].filter(part => part && part.trim() !== "");
+      rSocial = nameParts.join(" ");
+    }
+
     setPropForm({
-      primerNombre: p.primerNombre || "",
-      segundoNombre: p.segundoNombre || "",
-      primerApellido: p.primerApellido || "",
-      segundoApellido: p.segundoApellido || "",
-      razonSocial: p.razonSocial || "",
+      primerNombre: isNIT ? "" : (p.primerNombre || ""),
+      segundoNombre: isNIT ? "" : (p.segundoNombre || ""),
+      primerApellido: isNIT ? "" : (p.primerApellido || ""),
+      segundoApellido: isNIT ? "" : (p.segundoApellido || ""),
+      razonSocial: rSocial,
       documento: p.documento || "",
       tipoDocumento: defaultDocTypeOpt ? String(defaultDocTypeOpt.t_id) : "",
       tipoDerecho: defaultDerechoOpt ? String(defaultDerechoOpt.t_id) : "",
@@ -1722,12 +1742,40 @@ export default function PredioModal({
     if (!editingPropietario || !selectedSchema) return;
 
     try {
+      const docTypeOpt = typeOptions?.documentoTypes?.find(opt => String(opt.t_id) === String(propForm.tipoDocumento));
+      const isNIT = docTypeOpt && docTypeOpt.ilicode === 'NIT';
+
+      // Validar que el documento no sea '0' o compuesto solo de ceros
+      if (propForm.documento && /^0+$/.test(propForm.documento.trim())) {
+        message.error("El número de documento de identidad no puede ser cero (0).");
+        return;
+      }
+
+      // Validar la suma de participaciones en el frontend
+      const newPart = propForm.participacion ? parseFloat(propForm.participacion) : 0;
+      const otherOwners = (propietarios || []).filter(p => {
+        if (editingPropietario && !editingPropietario.isNew) {
+          return p.rrr !== editingPropietario.rrr;
+        }
+        return true;
+      });
+      const otherSum = otherOwners.reduce((sum, p) => sum + (parseFloat(p.derecho) || 0), 0);
+
+      const oldPart = (editingPropietario && !editingPropietario.isNew) 
+        ? (parseFloat(editingPropietario.derecho) || 0) 
+        : 100;
+
+      if (otherSum + newPart > 100.01 && !(editingPropietario && !editingPropietario.isNew && newPart < oldPart)) {
+        message.error(`La suma de participaciones excede el 100%. Las participaciones de los otros propietarios suman ${otherSum.toFixed(2)}%, e intentas asignar ${newPart.toFixed(2)}% (Total: ${(otherSum + newPart).toFixed(2)}%).`);
+        return;
+      }
+
       const payload = {
         documento: propForm.documento || null,
-        primer_nombre: propForm.primerNombre || null,
-        segundo_nombre: propForm.segundoNombre || null,
-        primer_apellido: propForm.primerApellido || null,
-        segundo_apellido: propForm.segundoApellido || null,
+        primer_nombre: isNIT ? null : (propForm.primerNombre || null),
+        segundo_nombre: isNIT ? null : (propForm.segundoNombre || null),
+        primer_apellido: isNIT ? null : (propForm.primerApellido || null),
+        segundo_apellido: isNIT ? null : (propForm.segundoApellido || null),
         razon_social: propForm.razonSocial || null,
         tipo_documento: propForm.tipoDocumento ? parseInt(propForm.tipoDocumento, 10) : null,
         tipo_derecho: propForm.tipoDerecho ? parseInt(propForm.tipoDerecho, 10) : null,
@@ -1853,7 +1901,7 @@ export default function PredioModal({
         espacio_de_nombres: fichaForm.espacio_de_nombres || null,
         departamento: fichaForm.departamento || null,
         municipio: fichaForm.municipio || null,
-        codigo_orip: fichaForm.codigo_orip || null,
+        codigo_orip: (fichaForm.codigo_orip && ['01', '1', '001'].includes(String(fichaForm.codigo_orip).trim())) ? '801' : (fichaForm.codigo_orip || null),
         nombre: fichaForm.nombre || null,
         condicion_predio: fichaForm.condicion_predio ? parseInt(fichaForm.condicion_predio, 10) : null,
         tipo_predio: fichaForm.tipo_predio ? parseInt(fichaForm.tipo_predio, 10) : null,
@@ -2102,12 +2150,14 @@ export default function PredioModal({
             <form onSubmit={handleSavePropietario} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", gap: 12 }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#6a6860", marginBottom: 6 }}>Primer Nombre</label>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#6a6860", marginBottom: 6 }}>Primer Nombre {!isFormNIT && <span style={{ color: "#7a1010" }}>*</span>}</label>
                   <input 
                     type="text" 
                     value={propForm.primerNombre}
                     onChange={e => setPropForm({ ...propForm, primerNombre: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", background: "#fff", border: "1px solid #e8e4dc", borderRadius: 6, fontSize: 13, color: "#1a1a18", boxSizing: "border-box" }}
+                    disabled={isFormNIT}
+                    required={!isFormNIT}
+                    style={{ width: "100%", padding: "8px 12px", background: isFormNIT ? "#f5f5f5" : "#fff", border: "1px solid #e8e4dc", borderRadius: 6, fontSize: 13, color: isFormNIT ? "#8a8880" : "#1a1a18", boxSizing: "border-box" }}
                   />
                 </div>
                 <div style={{ flex: 1 }}>
@@ -2116,19 +2166,22 @@ export default function PredioModal({
                     type="text" 
                     value={propForm.segundoNombre}
                     onChange={e => setPropForm({ ...propForm, segundoNombre: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", background: "#fff", border: "1px solid #e8e4dc", borderRadius: 6, fontSize: 13, color: "#1a1a18", boxSizing: "border-box" }}
+                    disabled={isFormNIT}
+                    style={{ width: "100%", padding: "8px 12px", background: isFormNIT ? "#f5f5f5" : "#fff", border: "1px solid #e8e4dc", borderRadius: 6, fontSize: 13, color: isFormNIT ? "#8a8880" : "#1a1a18", boxSizing: "border-box" }}
                   />
                 </div>
               </div>
 
               <div style={{ display: "flex", gap: 12 }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#6a6860", marginBottom: 6 }}>Primer Apellido</label>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#6a6860", marginBottom: 6 }}>Primer Apellido {!isFormNIT && <span style={{ color: "#7a1010" }}>*</span>}</label>
                   <input 
                     type="text" 
                     value={propForm.primerApellido}
                     onChange={e => setPropForm({ ...propForm, primerApellido: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", background: "#fff", border: "1px solid #e8e4dc", borderRadius: 6, fontSize: 13, color: "#1a1a18", boxSizing: "border-box" }}
+                    disabled={isFormNIT}
+                    required={!isFormNIT}
+                    style={{ width: "100%", padding: "8px 12px", background: isFormNIT ? "#f5f5f5" : "#fff", border: "1px solid #e8e4dc", borderRadius: 6, fontSize: 13, color: isFormNIT ? "#8a8880" : "#1a1a18", boxSizing: "border-box" }}
                   />
                 </div>
                 <div style={{ flex: 1 }}>
@@ -2137,19 +2190,22 @@ export default function PredioModal({
                     type="text" 
                     value={propForm.segundoApellido}
                     onChange={e => setPropForm({ ...propForm, segundoApellido: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", background: "#fff", border: "1px solid #e8e4dc", borderRadius: 6, fontSize: 13, color: "#1a1a18", boxSizing: "border-box" }}
+                    disabled={isFormNIT}
+                    style={{ width: "100%", padding: "8px 12px", background: isFormNIT ? "#f5f5f5" : "#fff", border: "1px solid #e8e4dc", borderRadius: 6, fontSize: 13, color: isFormNIT ? "#8a8880" : "#1a1a18", boxSizing: "border-box" }}
                   />
                 </div>
               </div>
 
               <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#6a6860", marginBottom: 6 }}>Razón Social (Personas Jurídicas)</label>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#6a6860", marginBottom: 6 }}>Razón Social (Personas Jurídicas) {isFormNIT && <span style={{ color: "#7a1010" }}>*</span>}</label>
                 <input 
                   type="text" 
                   value={propForm.razonSocial}
                   onChange={e => setPropForm({ ...propForm, razonSocial: e.target.value })}
-                  style={{ width: "100%", padding: "8px 12px", background: "#fff", border: "1px solid #e8e4dc", borderRadius: 6, fontSize: 13, color: "#1a1a18", boxSizing: "border-box" }}
-                  placeholder="Dejar vacío para personas naturales"
+                  disabled={!isFormNIT}
+                  required={isFormNIT}
+                  style={{ width: "100%", padding: "8px 12px", background: !isFormNIT ? "#f5f5f5" : "#fff", border: "1px solid #e8e4dc", borderRadius: 6, fontSize: 13, color: !isFormNIT ? "#8a8880" : "#1a1a18", boxSizing: "border-box" }}
+                  placeholder={isFormNIT ? "Ingrese la razón social de la empresa" : "No aplica para personas naturales"}
                 />
               </div>
 
@@ -2168,14 +2224,30 @@ export default function PredioModal({
                   <label style={{ display: "block", fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#6a6860", marginBottom: 6 }}>Tipo de Documento</label>
                   <select
                     value={propForm.tipoDocumento}
-                    onChange={e => setPropForm(prev => ({ ...prev, tipoDocumento: e.target.value }))}
+                    onChange={e => {
+                      const selectedId = e.target.value;
+                      const docTypeOpt = typeOptions?.documentoTypes?.find(opt => String(opt.t_id) === String(selectedId));
+                      const isNIT = docTypeOpt && docTypeOpt.ilicode === 'NIT';
+                      setPropForm(prev => ({
+                        ...prev,
+                        tipoDocumento: selectedId,
+                        ...(isNIT ? {
+                          primerNombre: "",
+                          segundoNombre: "",
+                          primerApellido: "",
+                          segundoApellido: ""
+                        } : {
+                          razonSocial: ""
+                        })
+                      }));
+                    }}
                     style={{ width: "100%", padding: "8px 12px", background: "#fff", border: "1px solid #e8e4dc", borderRadius: 6, fontSize: 13, color: "#1a1a18", boxSizing: "border-box" }}
                     required
                   >
                     <option value="">Seleccionar...</option>
                     {typeOptions?.documentoTypes?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {opt.dispname || opt.ilicode}
+                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2193,7 +2265,7 @@ export default function PredioModal({
                   <option value="">Seleccionar...</option>
                   {typeOptions?.derechoTypes?.map(opt => (
                     <option key={opt.t_id} value={String(opt.t_id)}>
-                      {opt.dispname || opt.ilicode}
+                      {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                     </option>
                   ))}
                 </select>
@@ -2256,7 +2328,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.fuenteTypes?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {opt.dispname || opt.ilicode}
+                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2271,7 +2343,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.disponibilidadTypes?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {opt.dispname || opt.ilicode}
+                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2418,7 +2490,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.ucTipos?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {opt.dispname || opt.ilicode}
+                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2434,7 +2506,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.ucUsos?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {opt.dispname || opt.ilicode}
+                        {`[${parseInt(opt.t_id, 10) - 200}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2452,7 +2524,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.ucPlantas?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {opt.dispname || opt.ilicode}
+                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2468,7 +2540,7 @@ export default function PredioModal({
                       <option value="">Seleccionar...</option>
                       {typeOptions?.ucTradicionales?.map(opt => (
                         <option key={opt.t_id} value={String(opt.t_id)}>
-                          {opt.dispname || opt.ilicode}
+                          {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                         </option>
                       ))}
                     </select>
@@ -2605,7 +2677,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.condiciones?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {opt.dispname || opt.ilicode}
+                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2620,7 +2692,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.tipos?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {opt.dispname || opt.ilicode}
+                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2635,7 +2707,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.destinaciones?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {opt.dispname || opt.ilicode}
+                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>

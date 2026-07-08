@@ -306,6 +306,19 @@ const ConsultaAlfanumerico = () => {
     setLoadingCalificaciones(true);
     
     try {
+      // 1. Cargar ficha detallada desde el API de consulta alfanumérica
+      try {
+        const response = await axios.get('/api/consulta-alfanumerico/fichas', {
+          params: { schema_name: selectedSchema, predio_id: predioId }
+        });
+        if (response.data.success && Array.isArray(response.data.data) && response.data.data.length > 0) {
+          const detailedMapped = mapPredio(response.data.data[0]);
+          setSelectedPredio(detailedMapped);
+        }
+      } catch (err) {
+        console.error('Error cargando ficha detallada:', err);
+      }
+
       const schemaParam = selectedSchema ? `?schema=${selectedSchema}` : '';
       
       // Propietarios

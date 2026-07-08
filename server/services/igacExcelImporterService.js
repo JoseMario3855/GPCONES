@@ -89,7 +89,8 @@ class IGACExcelImporterService {
       const predio = prediosMap.get(npn);
       if (!predio) continue; // NPN not in R1
 
-      predio.matricula = this.getCellValue(row, headersR2['MATRICULA_INMOBILIARIA']) || '';
+      const matriculaCol = headersR2['MATRICULA_INMOBILIARIA'] || headersR2['MATRICULA_INMOBILIARI'];
+      predio.matricula = this.getCellValue(row, matriculaCol) || '';
 
       // Parse up to 3 constructions
       for (let i = 1; i <= 3; i++) {
@@ -247,6 +248,9 @@ class IGACExcelImporterService {
           const parts = predio.matricula.split('-');
           if (parts.length > 1) {
             oripCircle = parts[0].trim();
+            if (['01', '1', '001'].includes(oripCircle)) {
+              oripCircle = '801';
+            }
             const rawMat = parseInt(parts[1].replace(/[^\d]/g, ''));
             matriculaInt = isNaN(rawMat) ? null : rawMat;
           } else {

@@ -33,7 +33,13 @@ router.put('/:rrr', [
   
   body('documento')
     .optional()
-    .isLength({ min: 2, max: 50 }).withMessage('El documento debe tener entre 2 y 50 caracteres'),
+    .isLength({ min: 1, max: 50 }).withMessage('El documento debe tener entre 1 y 50 caracteres')
+    .custom((value) => {
+      if (value && /^0+$/.test(value.trim())) {
+        throw new Error('El número de documento de identidad no puede ser cero (0)');
+      }
+      return true;
+    }),
   
   body('tipo_documento')
     .optional()
@@ -99,7 +105,13 @@ router.post('/', [
   
   body('documento')
     .notEmpty().withMessage('El documento de identidad es obligatorio')
-    .isLength({ min: 2, max: 50 }).withMessage('El documento debe tener entre 2 y 50 caracteres'),
+    .isLength({ min: 1, max: 50 }).withMessage('El documento debe tener entre 1 y 50 caracteres')
+    .custom((value) => {
+      if (value && /^0+$/.test(value.trim())) {
+        throw new Error('El número de documento de identidad no puede ser cero (0)');
+      }
+      return true;
+    }),
   
   body('tipo_documento')
     .notEmpty().withMessage('El tipo de documento es obligatorio')

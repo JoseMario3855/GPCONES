@@ -259,7 +259,11 @@ class PrediosController {
         addField('destinacion_economica', destVal);
         addField('espacio_de_nombres', numero_ficha || 'GPCONES_Predios');
         addField('departamento', deptCode);
-        addField('codigo_orip', req.body.codigo_orip || null);
+        let oripCodeVal = req.body.codigo_orip || null;
+        if (oripCodeVal && ['01', '1', '001'].includes(String(oripCodeVal).trim())) {
+          oripCodeVal = '801';
+        }
+        addField('codigo_orip', oripCodeVal);
         addField('condicion_predio', req.body.condicion_predio ? parseInt(req.body.condicion_predio, 10) : 57);
         addField('nombre', req.body.nombre || null);
         addField('area_registral_m2', areaM2);
@@ -1023,6 +1027,123 @@ class PrediosController {
 
   // Obtener opciones de tipo para LADM-COL
   async getTypeOptions(req, res) {
+    const ILICODE_MAP = {
+      // cr_documentotipo
+      'Cedula_Ciudadania': 'Cédula de ciudadanía',
+      'Cedula_Extranjeria': 'Cédula de extranjería',
+      'NIT': 'NIT',
+      'Pasaporte': 'Pasaporte',
+      'Registro_Civil': 'Registro civil',
+      'Secuencial': 'Secuencial',
+      'Tarjeta_Identidad': 'Tarjeta de identidad',
+
+      // lc_derechotipo / ilc_derechocatastraltipo
+      'Dominio': 'Dominio',
+      'Condominio': 'Condominio',
+      'Usufructo': 'Usufructo',
+      'Uso': 'Uso',
+      'Habitacion': 'Habitación',
+      'Superficie': 'Superficie',
+      'Servidumbre': 'Servidumbre',
+      'Hipoteca': 'Hipoteca',
+      'Prenda': 'Prenda',
+      'Ocupacion': 'Ocupación',
+      'Posesion': 'Posesión',
+      'Tenencia': 'Tenencia',
+
+      // lc_condicionprediotipo / ilc_condicionprediotipo
+      'NPH': 'No propiedad horizontal',
+      'PH': 'Propiedad horizontal',
+      'Condominio': 'Condominio',
+      'Parque_Cementerio': 'Parque cementerio',
+      'Bien_Uso_Publico': 'Bien de uso público',
+      'Resguardo_Indigena': 'Resguardo indígena',
+      'Comunidad_Negra': 'Comunidad negra',
+
+      // lc_destinacioneconomicatipo / ilc_destinacioneconomicatipo
+      'Habitacional': 'Habitacional',
+      'Industrial': 'Industrial',
+      'Comercial': 'Comercial',
+      'Agropecuario': 'Agropecuario',
+      'Agroindustrial': 'Agroindustrial',
+      'Forestal': 'Forestal',
+      'Minero': 'Minero',
+      'Conservacion_Proteccion': 'Conservación y protección',
+      'Recreacional': 'Recreacional',
+      'Uso_Institucional': 'Uso institucional',
+      'Uso_Publico': 'Uso público',
+
+      // col_fuenteadministrativatipo
+      'Escritura_Publica': 'Escritura pública',
+      'Sentencia_Judicial': 'Sentencia judicial',
+      'Resolucion': 'Resolución',
+      'Acto_Administrativo': 'Acto administrativo',
+      'Documento_Privado': 'Documento privado',
+
+      // col_estadodisponibilidadtipo
+      'Disponible': 'Disponible',
+      'No_Disponible': 'No disponible',
+      'Restringido': 'Restringido'
+    };
+
+    function sanitizeLookupText(dispname, ilicode) {
+      if (!dispname) return dispname;
+
+      if (ilicode && ILICODE_MAP[ilicode]) {
+        return ILICODE_MAP[ilicode];
+      }
+
+      let clean = dispname;
+      
+      // Reemplazar la Cídula o Cdula por Cédula
+      clean = clean.replace(/C[íi]dula/gi, 'Cédula');
+      clean = clean.replace(/Cdula/gi, 'Cédula');
+      clean = clean.replace(/ciudadan[íi]a/gi, 'ciudadanía');
+      clean = clean.replace(/extranjer[íi]a/gi, 'extranjería');
+
+      // Reemplazar el carácter \uFFFD (rombo con signo de interrogación)
+      clean = clean.replace(/[\uFFFD]/g, (match, offset, string) => {
+        const prevChar = string[offset - 1]?.toLowerCase();
+        const nextChar = string[offset + 1]?.toLowerCase();
+
+        if (offset === 0 && nextChar === 'r') return 'Á';
+        if (prevChar === 'c' && nextChar === 'n') return 'ió';
+        if (prevChar === 'm' && nextChar === 'r') return 'é';
+        if (prevChar === 'r' && nextChar === 'f') return 'á';
+        if (prevChar === 'b' && nextChar === 's') return 'á';
+        if (prevChar === 't' && nextChar === 'c') return 'é';
+        if (prevChar === 'f' && nextChar === 's') return 'í';
+        if (prevChar === 'r' && nextChar === 'd') return 'í';
+        if (prevChar === 'n' && nextChar === 'm') return 'ó';
+        if (prevChar === 'a' && nextChar === 'o') return 'ñ';
+        if (prevChar === 'o' && nextChar === 'n') return 'ó';
+        return 'e';
+      });
+
+      // Correcciones directas adicionales de palabras comunes
+      clean = clean.replace(/Construcci[oó]n convencional/gi, 'Construcción convencional');
+      clean = clean.replace(/Construcci[oó]n no convencional/gi, 'Construcción no convencional');
+      clean = clean.replace(/Restricci[oó]n derecho p[uú]blico/gi, 'Restricción derecho público');
+      clean = clean.replace(/Restricci[oó]n derecho privado/gi, 'Restricción derecho privado');
+      clean = clean.replace(/Dimensi[oó]n 2D/gi, 'Dimensión 2D');
+      clean = clean.replace(/Dimensi[oó]n 3D/gi, 'Dimensión 3D');
+      clean = clean.replace(/rea catastral/gi, 'Área catastral');
+      clean = clean.replace(/rea catastral gr[aá]fica/gi, 'Área catastral gráfica');
+      clean = clean.replace(/rea catastral alfanum[eé]rica/gi, 'Área catastral alfanumérica');
+      clean = clean.replace(/ba[nñ]o/gi, 'baño');
+      clean = clean.replace(/tama[nñ]o/gi, 'tamaño');
+
+      return clean;
+    }
+
+    const sanitizeRows = (rows) => {
+      if (!rows) return [];
+      return rows.map(r => ({
+        ...r,
+        dispname: sanitizeLookupText(r.dispname, r.ilicode)
+      }));
+    };
+
     try {
       const { schema } = req.query;
       if (!schema) {
@@ -1088,11 +1209,11 @@ class PrediosController {
       const queryLookup = async (tbl) => {
         try {
           const res = await query(`SELECT t_id, ilicode, dispname FROM "${schema}"."${tbl}" ORDER BY dispname`);
-          return res.rows;
+          return sanitizeRows(res.rows);
         } catch (err) {
           try {
             const res = await query(`SELECT t_id, ilicode, dispname FROM "modelointerno"."${tbl}" ORDER BY dispname`);
-            return res.rows;
+            return sanitizeRows(res.rows);
           } catch (err2) {
             console.warn(`Could not query lookup table ${tbl}:`, err2.message);
             return [];
@@ -1119,17 +1240,17 @@ class PrediosController {
       res.json({
         success: true,
         data: {
-          condiciones: condRes.rows,
-          destinaciones: destRes.rows,
-          tipos: tipoRes.rows,
-          documentoTypes: docRes.rows,
-          derechoTypes: derRes.rows,
-          ucTipos: ucTipoRes.rows,
-          ucUsos: ucUsoRes.rows,
-          ucPlantas: ucPlantaRes.rows,
-          ucTradicionales: ucTradRes.rows,
-          fuenteTypes: fuenteRes.rows,
-          disponibilidadTypes: dispRes.rows,
+          condiciones: sanitizeRows(condRes.rows),
+          destinaciones: sanitizeRows(destRes.rows),
+          tipos: sanitizeRows(tipoRes.rows),
+          documentoTypes: sanitizeRows(docRes.rows),
+          derechoTypes: sanitizeRows(derRes.rows),
+          ucTipos: sanitizeRows(ucTipoRes.rows),
+          ucUsos: sanitizeRows(ucUsoRes.rows),
+          ucPlantas: sanitizeRows(ucPlantaRes.rows),
+          ucTradicionales: sanitizeRows(ucTradRes.rows),
+          fuenteTypes: sanitizeRows(fuenteRes.rows),
+          disponibilidadTypes: sanitizeRows(dispRes.rows),
           // Calificaciones lookup tables
           cucArmazon,
           cucMuros,
@@ -1802,7 +1923,11 @@ class PrediosController {
           addUpdateField('departamento', deptCodeVal || '05');
         }
         if (updateData.codigo_orip !== undefined) {
-          addUpdateField('codigo_orip', updateData.codigo_orip);
+          let oripCodeVal = updateData.codigo_orip;
+          if (oripCodeVal && ['01', '1', '001'].includes(String(oripCodeVal).trim())) {
+            oripCodeVal = '801';
+          }
+          addUpdateField('codigo_orip', oripCodeVal);
         }
         if (updateData.condicion_predio !== undefined) {
           let condVal = 57;
