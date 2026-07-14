@@ -780,7 +780,67 @@ class ConsultaAlfanumericoService {
    * Ejecuta la consulta de Construcciones
    */
   async consultarConstrucciones(schemaName, filters = {}) {
-    return await this.ejecutarConsulta('Construcciones', schemaName, filters);
+    const result = await this.ejecutarConsulta('Construcciones', schemaName, filters);
+    
+    if (result && result.success && Array.isArray(result.data) && result.data.length > 0) {
+      try {
+        // Buscar si existen las tablas de construcción en la GDB
+        const allTablesRes = await query(
+          `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE'`,
+          [schemaName]
+        );
+        const existingTables = new Set(allTablesRes.rows.map(r => r.table_name.toLowerCase()));
+        
+        const gdbTables = ['u_construccion', 'r_construccion', 'u_construccion_informal', 'r_construccion_informal']
+          .filter(tbl => existingTables.has(tbl));
+          
+        if (gdbTables.length > 0) {
+          const npn = filters.npn || result.data[0].Npn;
+          if (npn) {
+            const unionParts = [];
+            for (const tbl of gdbTables) {
+              const colsRes = await query(
+                `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2`,
+                [schemaName, tbl]
+              );
+              const cols = colsRes.rows.map(r => r.column_name.toLowerCase());
+              const codeCol = cols.find(c => ['codigo', 'numero_predial', 'npn', 'numero_predial_nacional'].includes(c));
+              const areaCol = cols.find(c => ['shape_area', 'area'].includes(c));
+              const idCol = cols.find(c => ['identificador', 'etiqueta', 'codigo_edificacion'].includes(c)) || 'identificador';
+              
+              if (codeCol && areaCol) {
+                unionParts.push(`SELECT "${idCol}"::text as id_val, "${areaCol}" as area FROM "${schemaName}"."${tbl}" WHERE "${codeCol}" = $1`);
+              }
+            }
+            
+            if (unionParts.length > 0) {
+              const areaQuery = `SELECT id_val, area FROM (${unionParts.join(' UNION ALL ')}) combined`;
+              const areaRes = await query(areaQuery, [npn]);
+              
+              if (areaRes.rows.length > 0) {
+                const areaMap = new Map();
+                for (const row of areaRes.rows) {
+                  if (row.id_val != null) {
+                    areaMap.set(String(row.id_val).trim().toLowerCase(), parseFloat(row.area));
+                  }
+                }
+                
+                for (const constItem of result.data) {
+                  const idStr = String(constItem.identificador || constItem.etiqueta || '').trim().toLowerCase();
+                  if (idStr && areaMap.has(idStr)) {
+                    constItem.areaConstruidaGdb = areaMap.get(idStr);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error al recuperar áreas de construcción de GDB:', err.message);
+      }
+    }
+    
+    return result;
   }
 
   /**

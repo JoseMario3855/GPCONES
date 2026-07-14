@@ -165,7 +165,7 @@ export const mapConstruccion = (c, index) => {
     uso: c.IdUso && c.IdUso.includes('|') ? c.IdUso.split('|')[1] : (c.uso || c.Uso || uso),
     usoTradicional: c.usoTradicional || c.usoTadicional || (c.IdUso && c.IdUso.includes('|') ? c.IdUso.split('|')[1] : null),
     tipoPlanta: c.tipoPlanta || c.tipo_planta || null,
-    areaConstruida: c.areaConstruida != null ? parseFloat(c.areaConstruida) : (c.AreaConstruida != null ? parseFloat(c.AreaConstruida) : (c.area_construida != null ? parseFloat(c.area_construida) : null)),
+    areaConstruida: c.areaConstruida != null ? parseFloat(c.areaConstruida) : (c.areaConstruidaGdb != null ? parseFloat(c.areaConstruidaGdb) : (c.AreaConstruida != null ? parseFloat(c.AreaConstruida) : (c.area_construida != null ? parseFloat(c.area_construida) : null))),
   };
 };
 
