@@ -16,7 +16,8 @@ import {
   Col,
   Statistic,
   Divider,
-  Tooltip
+  Tooltip,
+  Checkbox
 } from 'antd';
 import {
   DatabaseOutlined,
@@ -26,7 +27,8 @@ import {
   EnvironmentOutlined,
   LinkOutlined,
   DisconnectOutlined,
-  FileExcelOutlined
+  FileExcelOutlined,
+  FileProtectOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 
@@ -35,6 +37,7 @@ const { Option } = Select;
 
 const MunicipiosManager = () => {
   const [municipios, setMunicipios] = useState([]);
+  const [soloConSchemas, setSoloConSchemas] = useState(false);
   const [departamentos, setDepartamentos] = useState([]);
   const [schemasDisponibles, setSchemasDisponibles] = useState([]);
   const [schemasAsociados, setSchemasAsociados] = useState([]);
@@ -59,7 +62,20 @@ const MunicipiosManager = () => {
       const response = await axios.get('/api/municipios', { params });
       
       if (response.data.success) {
-        setMunicipios(response.data.data);
+        // Ordenar: primero los que tienen schemas asociados (total_schemas > 0)
+        const sorted = [...response.data.data].sort((a, b) => {
+          const countA = parseInt(a.total_schemas || 0, 10);
+          const countB = parseInt(b.total_schemas || 0, 10);
+          
+          if (countA > 0 && countB === 0) return -1;
+          if (countA === 0 && countB > 0) return 1;
+          
+          // Mantener orden alfabético secundario
+          const deptCompare = (a.departamento || '').localeCompare(b.departamento || '');
+          if (deptCompare !== 0) return deptCompare;
+          return (a.nombre || '').localeCompare(b.nombre || '');
+        });
+        setMunicipios(sorted);
       }
     } catch (error) {
       console.error('Error cargando municipios:', error);
@@ -293,7 +309,7 @@ const MunicipiosManager = () => {
       </Card>
 
       <Card style={{ marginTop: '24px' }}>
-        <Row gutter={16} style={{ marginBottom: '16px' }}>
+        <Row gutter={16} style={{ marginBottom: '16px' }} align="middle">
           <Col span={8}>
             <Input
               placeholder="Buscar municipio o código DANE..."
@@ -328,11 +344,19 @@ const MunicipiosManager = () => {
               ))}
             </Select>
           </Col>
+          <Col span={8} style={{ display: 'flex', alignItems: 'center' }}>
+            <Checkbox
+              checked={soloConSchemas}
+              onChange={(e) => setSoloConSchemas(e.target.checked)}
+            >
+              Mostrar solo con schemas asociados
+            </Checkbox>
+          </Col>
         </Row>
 
         <Table
           columns={columns}
-          dataSource={municipios}
+          dataSource={soloConSchemas ? municipios.filter(m => parseInt(m.total_schemas || 0, 10) > 0) : municipios}
           rowKey="id"
           loading={loading}
           pagination={{
@@ -428,21 +452,58 @@ const MunicipiosManager = () => {
                     title: 'Acciones',
                     key: 'actions',
                     render: (_, record) => (
-                      <Popconfirm
-                        title="¿Desasociar este schema?"
-                        onConfirm={() => handleDesasociarSchema(record.id)}
-                        okText="Sí"
-                        cancelText="No"
-                      >
+                      <Space size="middle">
                         <Button
                           type="link"
-                          danger
+                          icon={<FileProtectOutlined />}
                           size="small"
-                          icon={<DisconnectOutlined />}
+                          onClick={async () => {
+                            const hide = message.loading('Exportando base de datos a archivo XTF...', 0);
+                            try {
+                              const response = await axios({
+                                url: '/api/xtf/export',
+                                method: 'GET',
+                                params: {
+                                  schema: record.schema_name
+                                },
+                                responseType: 'blob',
+                              });
+                              
+                              const url = window.URL.createObjectURL(new Blob([response.data]));
+                              const link = document.createElement('a');
+                              link.href = url;
+                              link.setAttribute('download', `${record.schema_name}_export.xtf`);
+                              document.body.appendChild(link);
+                              link.click();
+                              link.remove();
+                              window.URL.revokeObjectURL(url);
+                              message.success('Exportación de archivo XTF iniciada con éxito');
+                            } catch (error) {
+                              console.error('Error al exportar XTF:', error);
+                              message.error('Error al exportar y descargar el archivo XTF.');
+                            } finally {
+                              hide();
+                            }
+                          }}
                         >
-                          Desasociar
+                          Exportar XTF
                         </Button>
-                      </Popconfirm>
+                        <Popconfirm
+                          title="¿Desasociar este schema?"
+                          onConfirm={() => handleDesasociarSchema(record.id)}
+                          okText="Sí"
+                          cancelText="No"
+                        >
+                          <Button
+                            type="link"
+                            danger
+                            size="small"
+                            icon={<DisconnectOutlined />}
+                          >
+                            Desasociar
+                          </Button>
+                        </Popconfirm>
+                      </Space>
                     )
                   }
                 ]}

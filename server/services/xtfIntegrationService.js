@@ -486,11 +486,84 @@ class XTFIntegrationService {
       const terrainXtfIdCol = terrainCols.includes('t_ili_tid') ? 't_ili_tid' : (terrainCols.includes('tid') ? 'tid' : (terrainCols.includes('t_id') ? 't_id' : null));
       const terrainXtfId = terrainXtfIdCol ? `t.${terrainXtfIdCol}::varchar` : `'terreno_' || row_number() OVER()`;
       const terrainGeometry = terrainCols.includes('geometria') ? 'geometria' : (terrainCols.includes('geometry') ? 'geometry' : 'NULL');
-      const terrainArea = terrainCols.includes('area_hectareas') ? 'area_hectareas' : '0';
       const terrainTipo = terrainCols.includes('tipo_terreno') ? 'tipo_terreno' : `'NO_ESPECIFICADO'`;
       const terrainUso = terrainCols.includes('uso_terreno') ? 'uso_terreno' : `'NO_ESPECIFICADO'`;
 
       const colUebaunitExists = schemaInfo.tables.some(t => t.table_name === 'col_uebaunit');
+      
+      // Buscar tablas raw de GDB para unir
+      const possibleGdbTables = ['u_terreno', 'u_lc_terreno', 'r_terreno', 'r_lc_terreno'];
+      const existingGdbTables = schemaInfo.tables
+        .map(tbl => tbl.table_name)
+        .filter(name => possibleGdbTables.includes(name.toLowerCase()));
+
+      let gdbSubqueryJoin = '';
+      let gdbAreaExpr = null;
+      let predioAreaExpr = null;
+      let predioCols = [];
+
+      if (colUebaunitExists) {
+        const predioColsResult = await query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_schema = $1 AND table_name = $2
+        `, [xtfSchemaName, schemaInfo.tableMapping.predio]);
+        predioCols = predioColsResult.rows.map(r => r.column_name.toLowerCase());
+        
+        const npnColLocal = predioCols.includes('numero_predial_nacional') ? 'numero_predial_nacional' : 
+                            (predioCols.includes('numero_predial') ? 'numero_predial' : 
+                            (predioCols.includes('npn') ? 'npn' : null));
+
+        if (npnColLocal && existingGdbTables.length > 0) {
+          const unionParts = [];
+          for (const tbl of existingGdbTables) {
+            const gdbColsResult = await query(`
+              SELECT column_name FROM information_schema.columns 
+              WHERE table_schema = $1 AND table_name = $2
+            `, [xtfSchemaName, tbl]);
+            const gdbCols = gdbColsResult.rows.map(r => r.column_name.toLowerCase());
+            const gdbCodeCol = gdbCols.find(c => ['codigo', 'numero_predial', 'npn', 'numero_predial_nacional'].includes(c));
+            const gdbAreaCol = gdbCols.find(c => ['shape_area', 'area'].includes(c));
+            
+            if (gdbCodeCol && gdbAreaCol) {
+              unionParts.push(`SELECT "${gdbCodeCol}" as codigo, "${gdbAreaCol}" as area FROM "${xtfSchemaName}"."${tbl}"`);
+            }
+          }
+          
+          if (unionParts.length > 0) {
+            gdbSubqueryJoin = `LEFT JOIN (${unionParts.join(' UNION ALL ')}) gdb ON gdb.codigo = pr."${npnColLocal}"`;
+            gdbAreaExpr = 'gdb.area';
+          }
+        }
+
+        const predioAreaCol = predioCols.includes('area_hectareas') ? 'pr.area_hectareas' :
+                              (predioCols.includes('area_catastral_terreno') ? 'pr.area_catastral_terreno' :
+                              (predioCols.includes('area_registral_m2') ? 'pr.area_registral_m2' : null));
+        if (predioAreaCol) {
+          predioAreaExpr = predioAreaCol;
+        }
+      }
+
+      // Resolver la expresión de área usando COALESCE con prioridades
+      const terrainAreaColName = terrainCols.includes('area_hectareas') ? 'area_hectareas' : 
+                                 (terrainCols.includes('area_terreno') ? 'area_terreno' : 
+                                 (terrainCols.includes('area_calculada') ? 'area_calculada' : 
+                                 (terrainCols.includes('area_geometria') ? 'area_geometria' : null)));
+
+      const areaCoalesceParts = [];
+      if (terrainAreaColName) {
+        areaCoalesceParts.push(`t."${terrainAreaColName}"`);
+      }
+      if (gdbAreaExpr) {
+        areaCoalesceParts.push(gdbAreaExpr);
+      }
+      if (predioAreaExpr) {
+        areaCoalesceParts.push(predioAreaExpr);
+      }
+      areaCoalesceParts.push('0');
+      
+      const terrainArea = `COALESCE(${areaCoalesceParts.join(', ')})`;
+
       let joinQuery = '';
       if (colUebaunitExists) {
         const colUebaunitColsResult = await query(`
@@ -499,13 +572,6 @@ class XTFIntegrationService {
         `, [xtfSchemaName]);
         const colUebaunitCols = colUebaunitColsResult.rows.map(r => r.column_name.toLowerCase());
         const terrainCol = colUebaunitCols.find(c => c.startsWith('ue_') && c.includes('terreno')) || 'ue_cr_terreno';
-        
-        const predioColsResult = await query(`
-          SELECT column_name 
-          FROM information_schema.columns 
-          WHERE table_schema = $1 AND table_name = $2
-        `, [xtfSchemaName, schemaInfo.tableMapping.predio]);
-        const predioCols = predioColsResult.rows.map(r => r.column_name.toLowerCase());
 
         const predioXtfIdParts = [];
         if (predioCols.includes('t_ili_tid')) predioXtfIdParts.push('pr.t_ili_tid::varchar');
@@ -517,6 +583,7 @@ class XTFIntegrationService {
           LEFT JOIN "${xtfSchemaName}".col_uebaunit rel ON rel."${terrainCol}" = t.t_id
           LEFT JOIN "${xtfSchemaName}"."${schemaInfo.tableMapping.predio}" pr ON rel.baunit = pr.t_id
           LEFT JOIN predios_xtf p ON p.xtf_id = ${predioXtfIdExpr} AND p.xtf_schema = $1::varchar
+          ${gdbSubqueryJoin}
         `;
       } else {
         joinQuery = `

@@ -3,6 +3,7 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { message } from 'antd';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
+import { getOripName } from './predioMapper';
 
 const inputStyle = {
   width: '100%',
@@ -170,8 +171,51 @@ const PredioForm = ({ predioId: propPredioId = null, schema: propSchema = null, 
   };
 
   const handleChange = (field) => (e) => {
-    setForm(prev => ({ ...prev, [field]: e.target.value }));
+    const val = e.target.value;
+    setForm(prev => {
+      const next = { ...prev, [field]: val };
+      if (field === 'condicion_predio' && prev.numero_predial_nacional && prev.numero_predial_nacional.length === 30) {
+        const selected = typeOptions?.condiciones?.find(o => String(o.t_id) === String(val));
+        if (selected) {
+          let digit = '0';
+          if (selected.ilicode === 'NPH') digit = '0';
+          else if (selected.ilicode === 'PH.Matriz' || selected.ilicode === 'PH.Unidad_Predial') digit = '9';
+          else if (selected.ilicode === 'Condominio.Matriz' || selected.ilicode === 'Condominio.Unidad_Predial') digit = '8';
+          else if (selected.ilicode === 'Via') digit = '4';
+          else if (selected.ilicode === 'Informal') digit = '2';
+          else if (selected.ilicode === 'Bien_Uso_Publico') digit = '3';
+          
+          const chars = prev.numero_predial_nacional.split('');
+          chars[21] = digit;
+          next.numero_predial_nacional = chars.join('');
+        }
+      }
+      return next;
+    });
   };
+
+  useEffect(() => {
+    const npn = String(form.numero_predial_nacional || '').trim().replace(/\s/g, '');
+    if (npn.length >= 22) {
+      const digit = npn.charAt(21);
+      let matchedId = '';
+      if (digit === '0') matchedId = typeOptions?.condiciones?.find(o => o.ilicode === 'NPH')?.t_id;
+      else if (digit === '9') matchedId = typeOptions?.condiciones?.find(o => o.ilicode === 'PH.Matriz' || o.ilicode === 'PH.Unidad_Predial')?.t_id;
+      else if (digit === '8') matchedId = typeOptions?.condiciones?.find(o => o.ilicode === 'Condominio.Matriz' || o.ilicode === 'Condominio.Unidad_Predial')?.t_id;
+      else if (digit === '4') matchedId = typeOptions?.condiciones?.find(o => o.ilicode === 'Via')?.t_id;
+      else if (digit === '2') matchedId = typeOptions?.condiciones?.find(o => o.ilicode === 'Informal')?.t_id;
+      else if (digit === '3') matchedId = typeOptions?.condiciones?.find(o => o.ilicode === 'Bien_Uso_Publico')?.t_id;
+      
+      if (matchedId) {
+        setForm(prev => {
+          if (prev.condicion_predio !== String(matchedId)) {
+            return { ...prev, condicion_predio: String(matchedId) };
+          }
+          return prev;
+        });
+      }
+    }
+  }, [form.numero_predial_nacional, typeOptions?.condiciones]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -368,7 +412,7 @@ const PredioForm = ({ predioId: propPredioId = null, schema: propSchema = null, 
                 />
               </div>
               <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Círculo ORIP</label>
+                <label style={labelStyle}>Círculo ORIP {form.codigo_orip && getOripName(form.codigo_orip) ? `(${getOripName(form.codigo_orip)})` : ''}</label>
                 <input
                   type="text"
                   value={form.codigo_orip}
@@ -393,9 +437,13 @@ const PredioForm = ({ predioId: propPredioId = null, schema: propSchema = null, 
                   style={inputStyle}
                 >
                   <option value="">Seleccionar...</option>
-                  {typeOptions?.condiciones?.map(opt => (
+                  {typeOptions?.condiciones?.filter(opt => {
+                    const code = (opt.ilicode || '').toLowerCase();
+                    const name = (opt.dispname || '').toLowerCase();
+                    return !code.includes('parque_cementerio') && !name.includes('parque cementerio');
+                  }).map(opt => (
                     <option key={opt.t_id} value={String(opt.t_id)}>
-                      {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                      {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                     </option>
                   ))}
                 </select>
@@ -410,7 +458,7 @@ const PredioForm = ({ predioId: propPredioId = null, schema: propSchema = null, 
                   <option value="">Seleccionar...</option>
                   {typeOptions?.tipos?.map(opt => (
                     <option key={opt.t_id} value={String(opt.t_id)}>
-                      {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                      {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                     </option>
                   ))}
                 </select>
@@ -425,7 +473,7 @@ const PredioForm = ({ predioId: propPredioId = null, schema: propSchema = null, 
                   <option value="">Seleccionar...</option>
                   {typeOptions?.destinaciones?.map(opt => (
                     <option key={opt.t_id} value={String(opt.t_id)}>
-                      {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                      {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                     </option>
                   ))}
                 </select>
@@ -459,7 +507,7 @@ const PredioForm = ({ predioId: propPredioId = null, schema: propSchema = null, 
                     <option value="">Seleccionar...</option>
                     {typeOptions?.documentoTypes?.map(opt => (
                       <option key={opt.t_id} value={opt.ilicode || opt.dispname}>
-                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                        {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     )) || (
                       <>

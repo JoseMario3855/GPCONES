@@ -58,7 +58,9 @@ const IGACExcelImport = () => {
     try {
       const response = await axios.get('/api/municipios?activo=true');
       if (response.data.success) {
-        setMunicipios(response.data.data);
+        // Filtrar municipios que tienen al menos un esquema asociado
+        const filtered = response.data.data.filter(m => parseInt(m.total_schemas || 0, 10) > 0);
+        setMunicipios(filtered);
       }
     } catch (error) {
       console.error('Error cargando municipios:', error);
@@ -423,13 +425,15 @@ const IGACExcelImport = () => {
                           initialValue={municipioSeleccionado?.municipio_id}
                           rules={[{ required: true, message: 'Seleccione el municipio correspondiente' }]}
                         >
-                          <Select placeholder="Seleccione el municipio para asociar los datos">
-                            {municipios.map(m => (
-                              <Option key={m.id} value={m.id}>
-                                {m.nombre} - DANE {m.codigo_dane}
-                              </Option>
-                            ))}
-                          </Select>
+                          <Select
+                            showSearch
+                            placeholder="Seleccione el municipio para asociar los datos"
+                            optionFilterProp="label"
+                            options={municipios.map(m => ({
+                              value: m.id,
+                              label: `${m.nombre} - DANE ${m.codigo_dane}`
+                            }))}
+                          />
                         </Form.Item>
 
                         <Form.Item

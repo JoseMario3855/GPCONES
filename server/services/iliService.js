@@ -3,6 +3,7 @@ const { promisify } = require('util');
 const fs = require('fs').promises;
 const path = require('path');
 const xml2js = require('xml2js');
+const db = require('../config/database');
 
 const execAsync = promisify(exec);
 
@@ -697,13 +698,40 @@ class ILIService {
       console.log(`Exportando datos de schema ${schemaName} a XTF usando modelo ${modelType}`);
       
       const modelPath = await this.getModelPath(modelType);
-      const { dataset = 'exported_data', basket = null } = options;
+      const { dataset = null, basket = null } = options;
       const ili2pgCmd = await this.getILI2PGCommand();
       const dbParams = this.getDBParams();
       const modelDirEscaped = this.modelsDir.replace(/\\/g, '/');
       const outputFilePathEscaped = outputFilePath.replace(/\\/g, '/');
+
+      // Detectar el tipo de herencia configurado en el esquema
+      let inheritanceFlag = '--smart2Inheritance';
+      try {
+        const settingsRes = await db.query(`
+          SELECT setting FROM "${schemaName}"."t_ili2db_settings" 
+          WHERE tag = 'ch.ehi.ili2db.inheritanceTrafo'
+        `);
+        if (settingsRes.rows.length > 0) {
+          const trafo = settingsRes.rows[0].setting;
+          if (trafo === 'smart1') {
+            inheritanceFlag = '--smart1Inheritance';
+          } else if (trafo === 'smart2') {
+            inheritanceFlag = '--smart2Inheritance';
+          } else {
+            // Si es 'noInheritance' u otro, no pasamos flag de herencia inteligente
+            inheritanceFlag = '';
+          }
+        }
+      } catch (e) {
+        console.log(`No se pudo leer t_ili2db_settings para ${schemaName}, usando '--smart2Inheritance' por defecto:`, e.message);
+      }
+
       // Comando ili2pg para exportar a XTF
-      let command = `${ili2pgCmd} --export --disableValidation --exportModels ${this.getModelName(modelType)} --modeldir "${modelDirEscaped}" --dbschema ${schemaName} --smart2Inheritance --dataset ${dataset} ${dbParams} "${outputFilePathEscaped}"`;
+      let command = `${ili2pgCmd} --export --disableValidation --exportModels ${this.getModelName(modelType)} --modeldir "${modelDirEscaped}" --dbschema ${schemaName} ${inheritanceFlag} ${dbParams} "${outputFilePathEscaped}"`;
+      
+      if (dataset) {
+        command += ` --dataset ${dataset}`;
+      }
       
       if (basket) {
         command += ` --basket ${basket}`;

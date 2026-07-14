@@ -561,6 +561,40 @@ const XTFUpload = () => {
                   </Button>,
                   <Button
                     type="link"
+                    icon={<FileProtectOutlined />}
+                    onClick={async () => {
+                      const hide = message.loading('Exportando base de datos a archivo XTF...', 0);
+                      try {
+                        const response = await axios({
+                          url: '/api/xtf/export',
+                          method: 'GET',
+                          params: {
+                            schema: schema.schema_name
+                          },
+                          responseType: 'blob',
+                        });
+                        
+                        const url = window.URL.createObjectURL(new Blob([response.data]));
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.setAttribute('download', `${schema.schema_name}_export.xtf`);
+                        document.body.appendChild(link);
+                        link.click();
+                        link.remove();
+                        window.URL.revokeObjectURL(url);
+                        message.success('Exportación de archivo XTF iniciada con éxito');
+                      } catch (error) {
+                        console.error('Error al exportar XTF:', error);
+                        message.error('Error al exportar y descargar el archivo XTF.');
+                      } finally {
+                        hide();
+                      }
+                    }}
+                  >
+                    Exportar XTF
+                  </Button>,
+                  <Button
+                    type="link"
                     danger
                     icon={<DeleteOutlined />}
                     onClick={() => {

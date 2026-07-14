@@ -1002,7 +1002,7 @@ module.exports = {
           schema_name,
           schema_owner
         FROM information_schema.schemata 
-        WHERE schema_name LIKE 'xtf_%' OR schema_name LIKE 'ili_%' OR schema_name LIKE 'excel_%'
+        WHERE schema_name LIKE 'xtf_%' OR schema_name LIKE 'ili_%' OR schema_name LIKE 'excel_%' OR schema_name = 'modelointerno'
         ORDER BY schema_name DESC
       `);
 
@@ -1368,17 +1368,101 @@ module.exports = {
   exportXTF: async (req, res) => {
     try {
       const { query } = db;
-      const { model_type = 'antioquia', estado, municipio, only_validated = false } = req.query;
+      const { model_type, schema, estado, municipio, only_validated = false } = req.query;
       
-      // Verificar permisos según rol
+      // Si se proporciona un schema específico, exportamos la base de datos de ese schema directamente
+      if (schema) {
+        // Validar que el schema existe
+        const schemaExists = await query(`
+          SELECT schema_name 
+          FROM information_schema.schemata 
+          WHERE schema_name = $1
+        `, [schema]);
+        
+        if (schemaExists.rows.length === 0) {
+          return res.status(404).json({
+            success: false,
+            message: `El esquema "${schema}" no existe`
+          });
+        }
+
+        // Determinar tipo de modelo por defecto si no se especifica
+        let finalModelType = model_type;
+        if (!finalModelType) {
+          if (schema === 'modelointerno' || schema.startsWith('excel_') || schema.startsWith('tmp_to_xtf_')) {
+            finalModelType = 'modelo-interno';
+          } else {
+            finalModelType = 'antioquia';
+          }
+        }
+
+        // Crear directorio de exportación si no existe
+        const exportDir = path.join(__dirname, '../uploads/exports');
+        await fs.mkdir(exportDir, { recursive: true });
+
+        // Generar nombre de archivo
+        const timestamp = Date.now();
+        const filename = `${schema}_export_${timestamp}.xtf`;
+        const outputPath = path.join(exportDir, filename);
+
+        // Obtener el nombre del dataset real existente en el esquema
+        let datasetName = null;
+        try {
+          const datasetRes = await query(`
+            SELECT datasetname FROM "${schema}"."t_ili2db_dataset" LIMIT 1
+          `);
+          if (datasetRes.rows.length > 0) {
+            datasetName = datasetRes.rows[0].datasetname;
+          }
+        } catch (e) {
+          console.log(`[EXPORT XTF] No se pudo leer t_ili2db_dataset para ${schema}, se omitirá el flag --dataset:`, e.message);
+        }
+
+        const exportOptions = {
+          dataset: datasetName,
+          basket: null
+        };
+
+        console.log(`[EXPORT XTF] Exportando esquema "${schema}" con modelo "${finalModelType}" a "${outputPath}"`);
+
+        // Exportar a XTF usando el servicio ILI
+        const exportResult = await iliService.exportPostgreSQLToXTF(
+          finalModelType,
+          schema,
+          outputPath,
+          exportOptions
+        );
+
+        // Log de auditoría
+        await logAuditEvent(req.user.id, 'EXPORT_SCHEMA_XTF', 'XTF', {
+          filename: filename,
+          model_type: finalModelType,
+          schema_name: schema,
+          file_size: exportResult.fileSize
+        });
+
+        // Enviar archivo como descarga
+        res.setHeader('Content-Type', 'application/xml');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        
+        const fileContent = await fs.readFile(outputPath);
+        res.send(fileContent);
+
+        // Eliminar el archivo temporal del disco
+        try {
+          await fs.unlink(outputPath);
+        } catch (err) {
+          console.warn(`[EXPORT XTF] No se pudo eliminar archivo temporal: ${outputPath}`, err.message);
+        }
+        return;
+      }
+
+      // Código original de exportación desde schema public
       const userRole = req.user.role;
-      
-      // Construir query de predios según permisos
       let whereConditions = [];
       let queryParams = [];
       let paramIndex = 1;
 
-      // Revisión de Calidad solo puede exportar predios validados/aprobados
       if (userRole === 'Revisión de Calidad' || only_validated === 'true') {
         whereConditions.push(`estado IN ($${paramIndex}, $${paramIndex + 1})`);
         queryParams.push('Aprobado', 'En Revisión');
@@ -1399,7 +1483,6 @@ module.exports = {
         ? `WHERE ${whereConditions.join(' AND ')}` 
         : '';
 
-      // Obtener predios para exportar
       const prediosResult = await query(`
         SELECT 
           id,
@@ -1428,34 +1511,28 @@ module.exports = {
         });
       }
 
-      // Crear directorio de exportación si no existe
       const exportDir = path.join(__dirname, '../uploads/exports');
       await fs.mkdir(exportDir, { recursive: true });
 
-      // Generar nombre de archivo
       const timestamp = Date.now();
       const filename = `export_predios_${timestamp}.xtf`;
       const outputPath = path.join(exportDir, filename);
 
-      // Para exportar desde PostgreSQL, necesitamos usar un schema temporal o el schema public
-      // Por ahora exportamos desde public schema usando ili2pg
       const exportOptions = {
         dataset: `export_${timestamp}`,
         basket: null
       };
 
-      // Exportar a XTF usando el servicio ILI (desde schema public)
       const exportResult = await iliService.exportPostgreSQLToXTF(
-        model_type,
+        model_type || 'antioquia',
         'public',
         outputPath,
         exportOptions
       );
 
-      // Log de auditoría
       await logAuditEvent(req.user.id, 'EXPORT_XTF', 'XTF', {
         filename: filename,
-        model_type: model_type,
+        model_type: model_type || 'antioquia',
         total_predios: exportResult.totalPredios,
         file_size: exportResult.fileSize,
         estado_filter: estado,
@@ -1463,15 +1540,11 @@ module.exports = {
         only_validated: only_validated
       });
 
-      // Enviar archivo como descarga
       res.setHeader('Content-Type', 'application/xml');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       
       const fileContent = await fs.readFile(outputPath, 'utf8');
       res.send(fileContent);
-
-      // Opcional: eliminar archivo después de enviarlo (o mantenerlo para auditoría)
-      // await fs.unlink(outputPath);
 
     } catch (error) {
       console.error('Error exportando XTF:', error);
@@ -1909,6 +1982,15 @@ module.exports = {
         return result.rows[0]?.column_name || 'codigo';
       };
 
+      const getTableColumns = async (schemaName, tableName) => {
+        const result = await query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_schema = $1 AND LOWER(table_name) = LOWER($2)
+        `, [schemaName, tableName]);
+        return new Set(result.rows.map(r => r.column_name.toLowerCase()));
+      };
+
       if (consolidarTerrenos) {
         for (const layer of layers) {
           const { names: tableNames, desc } = layer;
@@ -1934,9 +2016,10 @@ module.exports = {
           `, [schema, tableTerreno]);
           const targetSrid = sridRes.rows[0]?.find_srid || 3116;
 
-          const updateQuery = `
-            UPDATE "${schema}"."${tableTerreno}" t
-            SET geometria = ST_GeomFromText(
+          const sourceCols = await getTableColumns(schema, actualTableName);
+          const targetCols = await getTableColumns(schema, tableTerreno);
+
+          let setGeomClause = `geometria = ST_GeomFromText(
               REPLACE(
                 ST_AsText(
                   ST_Force3D(
@@ -1953,7 +2036,26 @@ module.exports = {
                 'MULTISURFACE'
               ),
               $1::integer
-            )
+            )`;
+
+          let additionalSetClauses = [];
+          const sourceAreaCol = ['shape_area', 'area'].find(col => sourceCols.has(col));
+          if (sourceAreaCol) {
+            console.log(`[GDB IMPORT] Columna de área de origen detectada: ${sourceAreaCol}`);
+            const areaTargetFields = ['area_terreno', 'area_calculada', 'area_geometria'];
+            for (const field of areaTargetFields) {
+              if (targetCols.has(field)) {
+                additionalSetClauses.push(`"${field}" = gdb."${sourceAreaCol}"`);
+                console.log(`[GDB IMPORT] Se actualizará ${field} con el valor de ${sourceAreaCol}`);
+              }
+            }
+          }
+
+          const setStatement = [setGeomClause, ...additionalSetClauses].join(', ');
+
+          const updateQuery = `
+            UPDATE "${schema}"."${tableTerreno}" t
+            SET ${setStatement}
             FROM "${schema}"."${actualTableName}" gdb
             JOIN "${schema}"."${tablePredio}" p ON p."${npnColumn}" = gdb."${codeCol}"
             JOIN "${schema}".col_uebaunit u ON u.baunit = p.t_id

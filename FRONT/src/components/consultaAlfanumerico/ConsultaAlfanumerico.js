@@ -322,14 +322,18 @@ const ConsultaAlfanumerico = () => {
       const schemaParam = selectedSchema ? `?schema=${selectedSchema}` : '';
       
       // Propietarios
-      const ownersResponse = await axios.get(`/api/predios/${predioId}/propietarios${schemaParam}`);
-      if (ownersResponse.data.success) {
+      const ownersResponse = await axios.get('/api/consulta-alfanumerico/propietarios', {
+        params: { schema_name: selectedSchema, predio_id: predioId }
+      });
+      if (ownersResponse.data.success && Array.isArray(ownersResponse.data.data)) {
         setPropietariosDetalle(ownersResponse.data.data.map(mapPropietario));
       }
       
       // Construcciones
-      const constResponse = await axios.get(`/api/predios/${predioId}/construcciones${schemaParam}`);
-      if (constResponse.data.success) {
+      const constResponse = await axios.get('/api/consulta-alfanumerico/construcciones', {
+        params: { schema_name: selectedSchema, predio_id: predioId }
+      });
+      if (constResponse.data.success && Array.isArray(constResponse.data.data)) {
         setConstruccionesDetalle(constResponse.data.data.map((c, index) => mapConstruccion(c, index)));
       }
       

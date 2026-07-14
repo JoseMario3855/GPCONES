@@ -213,6 +213,7 @@ select
   max(unidad.planta_ubicacion) as "plantaubicacion",
   max(unidad.etiqueta) as "etiqueta",
   max(caracteristica.anio_construccion) as "añoConstruccion",
+  max(caracteristica.area_construida) as "areaConstruida",
   max(uso.ilicode) as "Uso",
   max(usotrad.ilicode) as "usoTadicional",
   max(consplantatipo.ilicode) as "tipoPlanta"
@@ -793,7 +794,225 @@ class ConsultaAlfanumericoService {
    * Ejecuta la consulta de CalificacionesDetalle
    */
   async consultarCalificacionesDetalle(schemaName, filters = {}) {
-    return await this.ejecutarConsulta('CalificacionesDetalle', schemaName, filters);
+    const result = await this.ejecutarConsulta('CalificacionesDetalle', schemaName, filters);
+    
+    const getPoints = (tipoCal, category, value) => {
+      if (!value) return 0;
+      
+      const val = String(value).trim();
+      const tc = String(tipoCal || 'Residencial').trim().charAt(0).toUpperCase(); // 'R', 'C', 'I', 'T'
+      const cat = category.toLowerCase().replace(/_/g, '');
+
+      switch (cat) {
+        case 'armazon':
+          if (val === 'Madera') return (tc === 'R' || tc === 'T') ? 0 : 4;
+          if (val === 'Prefabricado') return (tc === 'R' || tc === 'T') ? 1 : 8;
+          if (val === 'Ladrillo_Bloque') return (tc === 'R' || tc === 'T') ? 2 : 12;
+          if (val === 'Concreto_Hasta_Tres_Pisos') return (tc === 'R' || tc === 'T') ? 4 : 22;
+          if (val === 'Concreto_Cuatro_O_Mas_Pisos') return (tc === 'R' || tc === 'T') ? 6 : 22;
+          return 0;
+
+        case 'muros':
+          if (val === 'Materiales_Desecho_Esterilla') return 0;
+          if (val === 'Bahareque_Adobe_Tapia') return 1;
+          if (val === 'Madera') return 2;
+          if (val === 'Concreto_Prefabricado') return 3;
+          if (val === 'Bloque_Ladrillo') return 4;
+          return 0;
+
+        case 'cubierta':
+          if (val === 'Materiales_Desecho_Telas_Asfalticas') return 1;
+          if (val === 'Zinc_Teja_De_Barro_Eternit_Rustico') return 3;
+          if (val === 'Entrepiso_Cubierta_Provisional_Prefabricado') return 6;
+          if (val === 'Eternit_O_Teja_De_Barro_Cubierta_Sencilla') return 9;
+          if (val === 'Azotea_Aluminio_Placa_Sencilla_Con_Eternit') return 13;
+          if (val === 'Placa_Impermeabilizada_Cubierta_Lujosa_U_Ornamenta' || val === 'Placa_Impermeabilizada_Cubierta_Lujosa_U_Ornamental') {
+            return (tc !== 'I') ? 16 : 0;
+          }
+          return 0;
+
+        case 'conservacionestructura':
+          if (val.toLowerCase() === 'malo') return 0;
+          if (val === 'Regular') return 2;
+          if (val === 'Bueno') return 4;
+          if (val === 'Excelente') return 5;
+          return 0;
+
+        case 'fachada':
+          if (val === 'Pobre') return (tc === 'R' || tc === 'T') ? 0 : 2;
+          if (val === 'Sencilla') return (tc === 'R' || tc === 'T') ? 2 : 4;
+          if (val === 'Regular') return (tc === 'R' || tc === 'T') ? 4 : 6;
+          if (val === 'Buena') return (tc === 'C') ? 8 : 6;
+          if (val === 'Lujosa') return (tc === 'C') ? 12 : 8;
+          return 0;
+
+        case 'cubrimientosmuro':
+          if (val === 'Sin_Cubrimiento') return 0;
+          if (val === 'Paniete_Papel_Comun_Ladrillo_Prensado') return (tc === 'R' || tc === 'T') ? 1 : 2;
+          if (val === 'Estuco_Ceramica_Papel_Fino') return (tc === 'C') ? 3 : 2;
+          if (val === 'Madera_Piedra_Ornamental') return (tc === 'C') ? 5 : 3;
+          if (val === 'Marmol_Lujosos_Otros') return (tc === 'C') ? 7 : 4;
+          return 0;
+
+        case 'piso':
+          if (val === 'Tierra_Pisada') return 0;
+          if (val === 'Cemento_Madera_Burda') return (tc === 'R' || tc === 'T') ? 2 : 3;
+          if (val === 'Baldosa_Comun_De_Cemento_Tablon_Ladrillo') return (tc === 'R' || tc === 'T') ? 3 : 5;
+          if (val === 'Liston_Machihembrado') return (tc === 'C') ? 7 : 4;
+          if (val === 'Tableta_Caucho_Acrilico_Granito_Baldosa_Fina') return (tc === 'R' || tc === 'T') ? 6 : 9;
+          if (val === 'Parquet_Alfombra_Retal_De_Marmol') return (tc === 'C') ? 11 : 8;
+          if (val === 'Retal_De_Marmol_Marmol_Otros_Lujosos') return (tc === 'C') ? 13 : 9;
+          return 0;
+
+        case 'conservacionacabados':
+          if (val.toLowerCase() === 'malo') return 0;
+          if (val === 'Regular') return 2;
+          if (val === 'Bueno') return 4;
+          if (val === 'Excelente') return 5;
+          return 0;
+
+        case 'tamaniobanio':
+          if (tc === 'R' || tc === 'T') {
+            if (val === 'Sin_Banio') return 0;
+            if (val === 'Pequenio') return 1;
+            if (val === 'Mediano') return 2;
+            if (val === 'Grande') return 3;
+          }
+          return 0;
+
+        case 'enchapebanio':
+          if (tc === 'R' || tc === 'T') {
+            if (val === 'Sin_Cubrimiento') return 0;
+            if (val === 'Paniete_Baldosa_Comun_De_Cemento') return 1;
+            if (val === 'Baldosin_Unicolor_Papel_Comun') return 2;
+            if (val === 'Baldosin_Decorado_Papel_Fino') return 3;
+            if (val === 'Ceramica_Cristanac_Granito') return 4;
+            if (val === 'Marmol_Enchape_Lujoso') return 5;
+          }
+          return 0;
+
+        case 'mobiliariobanio':
+          if (tc === 'R' || tc === 'T' || tc === 'C') {
+            if (val === 'Pobre') return 0;
+            if (val === 'Sencillo') return 3;
+            if (val === 'Regular') return 6;
+            if (val === 'Bueno') return 9;
+            if (val === 'Lujoso') return (tc === 'C') ? 15 : 11;
+          }
+          return 0;
+
+        case 'conservacionbanio':
+          if (tc === 'R' || tc === 'T') {
+            if (val.toLowerCase() === 'malo') return 0;
+            if (val === 'Regular') return 2;
+            if (val === 'Bueno') return 4;
+            if (val === 'Excelente') return 5;
+          }
+          return 0;
+
+        case 'tamaniococina':
+          if (tc === 'R' || tc === 'T') {
+            if (val === 'Sin_Cocina') return 0;
+            if (val === 'Pequenia') return 1;
+            if (val === 'Mediana') return 2;
+            if (val === 'Grande') return 3;
+          }
+          return 0;
+
+        case 'enchapecocina':
+          if (tc === 'R' || tc === 'T') {
+            if (val === 'Sin_Cubrimiento') return 0;
+            if (val === 'Paniete_Baldosa_De_Cemento') return 1;
+            if (val === 'Baldosin_Unicolor_Papel_Comun') return 2;
+            if (val === 'Baldosin_Decorado_Papel_Fino') return 3;
+            if (val === 'Ceramica_Cristanac_Granito') return 4;
+            if (val === 'Marmol_Enchape_Lujoso') return 5;
+          }
+          return 0;
+
+        case 'mobiliariococina':
+          if (tc === 'R' || tc === 'T' || tc === 'C') {
+            if (val === 'Pobre') return 0;
+            if (val === 'Sencillo') return (tc === 'C') ? 3 : 2;
+            if (val === 'Regular') return (tc === 'C') ? 6 : 3;
+            if (val === 'Bueno') return (tc === 'C') ? 9 : 4;
+            if (val === 'Lujoso') return (tc === 'C') ? 13 : 6;
+          }
+          return 0;
+
+        case 'conservacioncocina':
+          if (tc === 'R' || tc === 'T') {
+            if (val.toLowerCase() === 'malo') return 0;
+            if (val === 'Regular') return 2;
+            if (val === 'Bueno') return 4;
+            if (val === 'Excelente') return 5;
+          }
+          return 0;
+
+        case 'complementoindustrial':
+          if (tc === 'I') {
+            if (val === 'Madera') return 6;
+            if (val === 'Metalica_Liviana') return 12;
+            if (val === 'Metalica_Mediana') return 22;
+            if (val === 'Metalica_Pesada') return 34;
+          }
+          return 0;
+
+        default:
+          return 0;
+      }
+    };
+
+    if (result && result.success && result.data && result.data.length > 0) {
+      result.data = result.data.map(row => {
+        const newRow = {};
+        
+        // Copiar columnas básicas anteriores a la calificación
+        const preKeys = ['predio_t_id', 'NroFicha', 'Npn', 'caracteristica', 'identificador', 'Uso', 'usoTadicional', 'tipocalificaion', 'Puntos', 'convencional_id', 'ConvencionalNoConvencional'];
+        preKeys.forEach(k => {
+          if (row[k] !== undefined) newRow[k] = row[k];
+        });
+
+        // Columnas de variables con sus respectivos puntos al frente
+        const variables = [
+          { key: 'armazon', label: 'PuntosArmazon' },
+          { key: 'muros', label: 'PuntosMuros' },
+          { key: 'cubierta', label: 'PuntosCubierta' },
+          { key: 'ConservacionEstructura', label: 'PuntosConservacionEstructura' },
+          { key: 'Fachada', label: 'PuntosFachada' },
+          { key: 'CubrimientosMuro', label: 'PuntosCubrimientoMuro' },
+          { key: 'Piso', label: 'PuntosPiso' },
+          { key: 'ConservacionAcabados', label: 'PuntosConservacionAcabados' },
+          { key: 'Tamaniobanio', label: 'PuntosTamanioBanio' },
+          { key: 'EnchapeBanio', label: 'PuntosEnchapesBanio' },
+          { key: 'mobiliariobanio', label: 'PuntosMobiliarioBanio' },
+          { key: 'ConservacionBanio', label: 'PuntosConservacionBanio' },
+          { key: 'Tamaniococina', label: 'PuntosTamanioCocina' },
+          { key: 'enchapecocina', label: 'PuntosEnchapeCocina' },
+          { key: 'mobiliariococina', label: 'PuntosMobiliarioCocina' },
+          { key: 'ConservacionCocina', label: 'PuntosConservacionCocina' },
+          { key: 'complementoindustrial', label: 'PuntosComplementoIndustrial' }
+        ];
+
+        variables.forEach(v => {
+          if (row[v.key] !== undefined) {
+            newRow[v.key] = row[v.key];
+            newRow[v.label] = getPoints(row.tipocalificaion, v.key, row[v.key]);
+          }
+        });
+
+        // Copiar las columnas restantes
+        Object.keys(row).forEach(k => {
+          if (newRow[k] === undefined) {
+            newRow[k] = row[k];
+          }
+        });
+
+        return newRow;
+      });
+    }
+    
+    return result;
   }
 
   /**

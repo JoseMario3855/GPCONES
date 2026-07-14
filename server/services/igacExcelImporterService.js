@@ -96,7 +96,7 @@ class IGACExcelImporterService {
       for (let i = 1; i <= 3; i++) {
         const suffix = `_${i}`;
         const areaVal = this.getCellValue(row, headersR2[`AREA_CONSTRUIDA${suffix}`]);
-        const area = this.parseImplicitDecimal(areaVal);
+        const area = parseFloat(areaVal.replace(/[^\d.-]/g, '')) || 0;
 
         if (area > 0) {
           const construction = {
@@ -430,7 +430,7 @@ class IGACExcelImporterService {
             tipoFuenteId,
             'Catastro',
             'Importado automáticamente desde Excel R1/R2',
-            predio.npn, // Using NPN as source number reference
+            null, // Do not set NPN as deed number fallback
             estadoDispId,
             schemaName,
             `${predio.npn}_fuente_${interesadoTId}`

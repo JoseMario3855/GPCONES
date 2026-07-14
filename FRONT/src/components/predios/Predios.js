@@ -48,7 +48,7 @@ import axios from 'axios';
 import moment from 'moment';
 import PredioForm from './PredioForm';
 import PredioModal from './PredioModal';
-import { mapPredio, mapPropietario, mapConstruccion } from './predioMapper';
+import { mapPredio, mapPropietario, mapConstruccion, getOripName } from './predioMapper';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -677,7 +677,11 @@ const Predios = () => {
       },
       'codigo_orip': {
         title: 'Código ORIP',
-        render: (val) => <Text>{val || '-'}</Text>
+        render: (val) => {
+          if (!val) return <Text>-</Text>;
+          const name = getOripName(val);
+          return <Text>{val}{name ? ` (${name})` : ''}</Text>;
+        }
       },
       'codigo_homologado': {
         title: 'Código Homologado',
@@ -1481,7 +1485,11 @@ const Predios = () => {
                     label="Condición Predio"
                   >
                     <Select placeholder="Seleccionar" loading={loadingOptions} allowClear>
-                      {typeOptions.condiciones.map(opt => (
+                      {typeOptions.condiciones.filter(opt => {
+                        const code = (opt.ilicode || '').toLowerCase();
+                        const name = (opt.dispname || '').toLowerCase();
+                        return !code.includes('parque_cementerio') && !name.includes('parque cementerio');
+                      }).map(opt => (
                         <Option key={opt.t_id} value={opt.t_id}>
                           {opt.dispname || opt.ilicode}
                         </Option>

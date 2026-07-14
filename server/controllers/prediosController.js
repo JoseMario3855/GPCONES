@@ -1237,10 +1237,16 @@ class PrediosController {
       const cucCerchasComplemento = await queryLookup('cuc_cerchascomplementoindustriatipo');
       const cucCalificarTipo = await queryLookup('cuc_calificartipo');
 
+      const sanitizedCondRes = sanitizeRows(condRes.rows).filter(opt => {
+        const code = (opt.ilicode || '').toLowerCase();
+        const name = (opt.dispname || '').toLowerCase();
+        return !code.includes('parque_cementerio') && !name.includes('parque cementerio');
+      });
+
       res.json({
         success: true,
         data: {
-          condiciones: sanitizeRows(condRes.rows),
+          condiciones: sanitizedCondRes,
           destinaciones: sanitizeRows(destRes.rows),
           tipos: sanitizeRows(tipoRes.rows),
           documentoTypes: sanitizeRows(docRes.rows),
@@ -2165,8 +2171,19 @@ class PrediosController {
 
         possibleFields.forEach(f => {
           if (req.body[f] !== undefined) {
+            let val = req.body[f] === '' ? null : req.body[f];
+            
+            // Evitar actualizar campos catalogados requeridos (not null) a null
+            const notNullCatalogFields = [
+              'tipo_calificacion', 'armazon', 'muros', 'cubierta', 'conservacion_estructura',
+              'fachada', 'cubrimiento_muros', 'piso', 'conservacion_acabados'
+            ];
+            if (notNullCatalogFields.includes(f) && val === null) {
+              val = currentCal[f];
+            }
+            
             updateFields.push(`${f} = $${pIdx++}`);
-            updateValues.push(req.body[f] === '' ? null : req.body[f]);
+            updateValues.push(val);
           }
         });
 

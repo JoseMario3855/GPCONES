@@ -3,7 +3,7 @@ import axios from "axios";
 import { message } from "antd";
 import { MapContainer, TileLayer, GeoJSON, useMap } from "react-leaflet";
 import L from "leaflet";
-import { mapPredio } from "./predioMapper";
+import { mapPredio, getOripName } from "./predioMapper";
 
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -229,7 +229,7 @@ function TabFicha({ data, canManagePredios, selectedSchema, onEdit }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
         <Metric label="Departamento" value={data.departamento} />
         <Metric label="Municipio" value={data.municipio} />
-        <Metric label="Círculo ORIP" value={data.circulo} mono />
+        <Metric label="Círculo ORIP" value={data.circuloNombre ? `${data.circulo} (${data.circuloNombre})` : data.circulo} mono />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 8, marginBottom: 18 }}>
         <Metric 
@@ -660,16 +660,17 @@ function ConstruccionCard({ c, index, canManagePredios, selectedSchema, onEdit }
         </div>
 
         {/* Métricas en grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
           {[
             ["Plantas",    c.totalPlantas ?? "—", false],
             ["Altura (m)", c.altura != null ? `${c.altura}m` : "—", false],
             ["Planta",     c.plantaUbicacion ?? "—", false],
             ["Año constr.",c.anioConstruccion ?? "—", false],
+            ["Área constr.",c.areaConstruida != null ? `${c.areaConstruida} m²` : "—", false],
           ].map(([lbl, val]) => (
             <div key={lbl} style={{ background: "#f7f4ee", borderRadius: 6, padding: "8px 10px" }}>
-              <p style={{ fontSize: 9, color: "#9a9890", margin: "0 0 2px", textTransform: "uppercase", letterSpacing: "0.06em" }}>{lbl}</p>
-              <p style={{ fontSize: 13, fontWeight: 700, color: "#1a1a18", margin: 0 }}>{val}</p>
+               <p style={{ fontSize: 9, color: "#9a9890", margin: "0 0 2px", textTransform: "uppercase", letterSpacing: "0.06em" }}>{lbl}</p>
+               <p style={{ fontSize: 13, fontWeight: 700, color: "#1a1a18", margin: 0 }}>{val}</p>
             </div>
           ))}
         </div>
@@ -1008,7 +1009,7 @@ function TabCalificaciones({
         <option value="">Seleccionar...</option>
         {list?.map(opt => (
           <option key={opt.t_id} value={String(opt.t_id)}>
-            {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+            {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
           </option>
         ))}
       </select>
@@ -1159,16 +1160,16 @@ function TabCalificaciones({
                 {/* Grupo 1: Estructura */}
                 <h4 style={{ fontSize: 10, fontWeight: 700, color: "#8a8880", margin: "8px 0 6px", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "0.5px solid #e8e4dc", paddingBottom: 3 }}>Estructura</h4>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 12 }}>
-                  <RecuadroField label="Armazón" value={cal.armazon} isEditing={isEditing}>
+                  <RecuadroField label="Armazón" value={cal.armazon ? `${cal.armazon} (${cal.PuntosArmazon != null ? cal.PuntosArmazon : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("armazon", typeOptions?.cucArmazon)}
                   </RecuadroField>
-                  <RecuadroField label="Muros" value={cal.muros} isEditing={isEditing}>
+                  <RecuadroField label="Muros" value={cal.muros ? `${cal.muros} (${cal.PuntosMuros != null ? cal.PuntosMuros : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("muros", typeOptions?.cucMuros)}
                   </RecuadroField>
-                  <RecuadroField label="Cubierta" value={cal.cubierta} isEditing={isEditing}>
+                  <RecuadroField label="Cubierta" value={cal.cubierta ? `${cal.cubierta} (${cal.PuntosCubierta != null ? cal.PuntosCubierta : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("cubierta", typeOptions?.cucCubierta)}
                   </RecuadroField>
-                  <RecuadroField label="Conservación" value={cal.ConservacionEstructura} isEditing={isEditing}>
+                  <RecuadroField label="Conservación" value={cal.ConservacionEstructura ? `${cal.ConservacionEstructura} (${cal.PuntosConservacionEstructura != null ? cal.PuntosConservacionEstructura : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("conservacion_estructura", typeOptions?.cucConservacion)}
                   </RecuadroField>
                 </div>
@@ -1176,16 +1177,16 @@ function TabCalificaciones({
                 {/* Grupo 2: Acabados */}
                 <h4 style={{ fontSize: 10, fontWeight: 700, color: "#8a8880", margin: "8px 0 6px", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "0.5px solid #e8e4dc", paddingBottom: 3 }}>Acabados</h4>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 12 }}>
-                  <RecuadroField label="Fachada" value={cal.Fachada} isEditing={isEditing}>
+                  <RecuadroField label="Fachada" value={cal.Fachada ? `${cal.Fachada} (${cal.PuntosFachada != null ? cal.PuntosFachada : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("fachada", typeOptions?.cucFachada)}
                   </RecuadroField>
-                  <RecuadroField label="Cubrimientos" value={cal.CubrimientosMuro} isEditing={isEditing}>
+                  <RecuadroField label="Cubrimientos" value={cal.CubrimientosMuro ? `${cal.CubrimientosMuro} (${cal.PuntosCubrimientoMuro != null ? cal.PuntosCubrimientoMuro : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("cubrimiento_muros", typeOptions?.cucCubrimientoMuros)}
                   </RecuadroField>
-                  <RecuadroField label="Piso" value={cal.Piso} isEditing={isEditing}>
+                  <RecuadroField label="Piso" value={cal.Piso ? `${cal.Piso} (${cal.PuntosPiso != null ? cal.PuntosPiso : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("piso", typeOptions?.cucPiso)}
                   </RecuadroField>
-                  <RecuadroField label="Conservación" value={cal.ConservacionAcabados} isEditing={isEditing}>
+                  <RecuadroField label="Conservación" value={cal.ConservacionAcabados ? `${cal.ConservacionAcabados} (${cal.PuntosConservacionAcabados != null ? cal.PuntosConservacionAcabados : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("conservacion_acabados", typeOptions?.cucConservacion)}
                   </RecuadroField>
                 </div>
@@ -1193,16 +1194,16 @@ function TabCalificaciones({
                 {/* Grupo 3: Baños */}
                 <h4 style={{ fontSize: 10, fontWeight: 700, color: "#8a8880", margin: "8px 0 6px", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "0.5px solid #e8e4dc", paddingBottom: 3 }}>Baños</h4>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 12 }}>
-                  <RecuadroField label="Tamaño" value={cal.Tamaniobanio} isEditing={isEditing}>
+                  <RecuadroField label="Tamaño" value={cal.Tamaniobanio ? `${cal.Tamaniobanio} (${cal.PuntosTamanioBanio != null ? cal.PuntosTamanioBanio : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("tamanio_banio", typeOptions?.cucTamanioBanio)}
                   </RecuadroField>
-                  <RecuadroField label="Enchape" value={cal.EnchapeBanio} isEditing={isEditing}>
+                  <RecuadroField label="Enchape" value={cal.EnchapeBanio ? `${cal.EnchapeBanio} (${cal.PuntosEnchapesBanio != null ? cal.PuntosEnchapesBanio : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("enchape_banio", typeOptions?.cucEnchapeBanio)}
                   </RecuadroField>
-                  <RecuadroField label="Mobiliario" value={cal.mobiliariobanio} isEditing={isEditing}>
+                  <RecuadroField label="Mobiliario" value={cal.mobiliariobanio ? `${cal.mobiliariobanio} (${cal.PuntosMobiliarioBanio != null ? cal.PuntosMobiliarioBanio : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("mobiliario_banio", typeOptions?.cucMobiliarioBanio)}
                   </RecuadroField>
-                  <RecuadroField label="Conservación" value={cal.ConservacionBanio} isEditing={isEditing}>
+                  <RecuadroField label="Conservación" value={cal.ConservacionBanio ? `${cal.ConservacionBanio} (${cal.PuntosConservacionBanio != null ? cal.PuntosConservacionBanio : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("conservacion_banio", typeOptions?.cucConservacion)}
                   </RecuadroField>
                 </div>
@@ -1210,16 +1211,16 @@ function TabCalificaciones({
                 {/* Grupo 4: Cocina */}
                 <h4 style={{ fontSize: 10, fontWeight: 700, color: "#8a8880", margin: "8px 0 6px", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "0.5px solid #e8e4dc", paddingBottom: 3 }}>Cocina</h4>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 12 }}>
-                  <RecuadroField label="Tamaño" value={cal.Tamaniococina} isEditing={isEditing}>
+                  <RecuadroField label="Tamaño" value={cal.Tamaniococina ? `${cal.Tamaniococina} (${cal.PuntosTamanioCocina != null ? cal.PuntosTamanioCocina : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("tamanio_cocina", typeOptions?.cucTamanioCocina)}
                   </RecuadroField>
-                  <RecuadroField label="Enchape" value={cal.enchapecocina} isEditing={isEditing}>
+                  <RecuadroField label="Enchape" value={cal.enchapecocina ? `${cal.enchapecocina} (${cal.PuntosEnchapeCocina != null ? cal.PuntosEnchapeCocina : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("enchape_cocina", typeOptions?.cucEnchapeCocina)}
                   </RecuadroField>
-                  <RecuadroField label="Mobiliario" value={cal.mobiliariococina} isEditing={isEditing}>
+                  <RecuadroField label="Mobiliario" value={cal.mobiliariococina ? `${cal.mobiliariococina} (${cal.PuntosMobiliarioCocina != null ? cal.PuntosMobiliarioCocina : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("mobiliario_cocina", typeOptions?.cucMobiliarioCocina)}
                   </RecuadroField>
-                  <RecuadroField label="Conservación" value={cal.ConservacionCocina} isEditing={isEditing}>
+                  <RecuadroField label="Conservación" value={cal.ConservacionCocina ? `${cal.ConservacionCocina} (${cal.PuntosConservacionCocina != null ? cal.PuntosConservacionCocina : 0} pts)` : "—"} isEditing={isEditing}>
                     {renderDropdown("conservacion_cocina", typeOptions?.cucConservacion)}
                   </RecuadroField>
                 </div>
@@ -1229,7 +1230,7 @@ function TabCalificaciones({
                   <>
                     <h4 style={{ fontSize: 10, fontWeight: 700, color: "#8a8880", margin: "8px 0 6px", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "0.5px solid #e8e4dc", paddingBottom: 3 }}>Adicionales (Industrial)</h4>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-                      <RecuadroField label="Complemento" value={cal.complementoindustrial} isEditing={isEditing}>
+                      <RecuadroField label="Complemento" value={cal.complementoindustrial ? `${cal.complementoindustrial} (${cal.PuntosComplementoIndustrial != null ? cal.PuntosComplementoIndustrial : 0} pts)` : "—"} isEditing={isEditing}>
                         {renderDropdown("cerchas_complemento_industria", typeOptions?.cucCerchasComplemento)}
                       </RecuadroField>
                       <RecuadroField label="Altura Cerchas > 6m" value={cal.AlturaCerchas === 1 ? "Sí" : "No"} isEditing={isEditing}>
@@ -1571,6 +1572,52 @@ export default function PredioModal({
     uso_predio: "",
   });
 
+  useEffect(() => {
+    const npn = String(fichaForm.numero_predial_nacional || '').trim().replace(/\s/g, '');
+    if (npn.length >= 22) {
+      const digit = npn.charAt(21);
+      let matchedId = '';
+      if (digit === '0') matchedId = typeOptions?.condiciones?.find(o => o.ilicode === 'NPH')?.t_id;
+      else if (digit === '9') matchedId = typeOptions?.condiciones?.find(o => o.ilicode === 'PH.Matriz' || o.ilicode === 'PH.Unidad_Predial')?.t_id;
+      else if (digit === '8') matchedId = typeOptions?.condiciones?.find(o => o.ilicode === 'Condominio.Matriz' || o.ilicode === 'Condominio.Unidad_Predial')?.t_id;
+      else if (digit === '4') matchedId = typeOptions?.condiciones?.find(o => o.ilicode === 'Via')?.t_id;
+      else if (digit === '2') matchedId = typeOptions?.condiciones?.find(o => o.ilicode === 'Informal')?.t_id;
+      else if (digit === '3') matchedId = typeOptions?.condiciones?.find(o => o.ilicode === 'Bien_Uso_Publico')?.t_id;
+      
+      if (matchedId) {
+        setFichaForm(prev => {
+          if (prev.condicion_predio !== String(matchedId)) {
+            return { ...prev, condicion_predio: String(matchedId) };
+          }
+          return prev;
+        });
+      }
+    }
+  }, [fichaForm.numero_predial_nacional, typeOptions?.condiciones]);
+
+  const handleFichaCondicionChange = (val) => {
+    setFichaForm(prev => {
+      const next = { ...prev, condicion_predio: val };
+      if (prev.numero_predial_nacional && prev.numero_predial_nacional.length === 30) {
+        const selected = typeOptions?.condiciones?.find(o => String(o.t_id) === String(val));
+        if (selected) {
+          let digit = '0';
+          if (selected.ilicode === 'NPH') digit = '0';
+          else if (selected.ilicode === 'PH.Matriz' || selected.ilicode === 'PH.Unidad_Predial') digit = '9';
+          else if (selected.ilicode === 'Condominio.Matriz' || selected.ilicode === 'Condominio.Unidad_Predial') digit = '8';
+          else if (selected.ilicode === 'Via') digit = '4';
+          else if (selected.ilicode === 'Informal') digit = '2';
+          else if (selected.ilicode === 'Bien_Uso_Publico') digit = '3';
+          
+          const chars = prev.numero_predial_nacional.split('');
+          chars[21] = digit;
+          next.numero_predial_nacional = chars.join('');
+        }
+      }
+      return next;
+    });
+  };
+
   // Estados de edición de propietarios
   const [editingPropietario, setEditingPropietario] = useState(null);
   const [propForm, setPropForm] = useState({
@@ -1615,9 +1662,28 @@ export default function PredioModal({
     const destClean = (predio.destinoEconomico || "").split("|")[1] || predio.destinoEconomico || "";
     const tipoClean = predio.tipo || "";
 
-    const defaultCondOpt = typeOptions?.condiciones?.find(
-      opt => opt.ilicode === condClean || opt.dispname === condClean || (predio.condicionPredio && opt.ilicode === predio.condicionPredio.split("|")[0])
-    );
+    const digitMatch = condClean.match(/\((\d+)\)/);
+    const digit = digitMatch ? digitMatch[1] : (predio.condicion || "");
+
+    const defaultCondOpt = typeOptions?.condiciones?.find(opt => {
+      if (opt.t_id === Number(condClean)) return true;
+      if (opt.ilicode === condClean || opt.dispname === condClean) return true;
+      const codePart = (predio.condicionPredio || "").split("|")[0];
+      if (opt.ilicode === codePart || String(opt.t_id) === String(codePart)) return true;
+      if (digit === '0' && opt.ilicode === 'NPH') return true;
+      if (digit === '9' && (opt.ilicode === 'PH.Matriz' || opt.ilicode === 'PH.Unidad_Predial')) return true;
+      if (digit === '8' && (opt.ilicode === 'Condominio.Matriz' || opt.ilicode === 'Condominio.Unidad_Predial')) return true;
+      if (digit === '4' && opt.ilicode === 'Via') return true;
+      if (digit === '2' && opt.ilicode === 'Informal') return true;
+      if (digit === '3' && opt.ilicode === 'Bien_Uso_Publico') return true;
+      if (codePart === '1' && opt.ilicode === 'NPH') return true;
+      if (codePart === '2' && (opt.ilicode === 'PH.Matriz' || opt.ilicode === 'PH.Unidad_Predial')) return true;
+      if (codePart === '3' && (opt.ilicode === 'Condominio.Matriz' || opt.ilicode === 'Condominio.Unidad_Predial')) return true;
+      if (codePart === '11' && opt.ilicode === 'Via') return true;
+      if (codePart === '12' && opt.ilicode === 'Informal') return true;
+      if (codePart === '13' && opt.ilicode === 'Bien_Uso_Publico') return true;
+      return false;
+    });
     const defaultDestOpt = typeOptions?.destinaciones?.find(
       opt => opt.ilicode.toLowerCase() === destClean.toLowerCase() || opt.dispname.toLowerCase() === destClean.toLowerCase() || (predio.destinoEconomico && opt.ilicode === predio.destinoEconomico.split("|")[0])
     );
@@ -2283,7 +2349,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.documentoTypes?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                        {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2301,7 +2367,7 @@ export default function PredioModal({
                   <option value="">Seleccionar...</option>
                   {typeOptions?.derechoTypes?.map(opt => (
                     <option key={opt.t_id} value={String(opt.t_id)}>
-                      {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                      {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                     </option>
                   ))}
                 </select>
@@ -2364,7 +2430,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.fuenteTypes?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                        {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2379,7 +2445,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.disponibilidadTypes?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                        {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2526,7 +2592,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.ucTipos?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                        {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2542,7 +2608,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.ucUsos?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {`[${parseInt(opt.t_id, 10) - 200}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                        {`[${parseInt(opt.t_id, 10) - 200}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2560,7 +2626,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.ucPlantas?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                        {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2576,7 +2642,7 @@ export default function PredioModal({
                       <option value="">Seleccionar...</option>
                       {typeOptions?.ucTradicionales?.map(opt => (
                         <option key={opt.t_id} value={String(opt.t_id)}>
-                          {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                          {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                         </option>
                       ))}
                     </select>
@@ -2692,7 +2758,7 @@ export default function PredioModal({
                   />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#6a6860", marginBottom: 6 }}>Círculo ORIP</label>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#6a6860", marginBottom: 6 }}>Círculo ORIP {fichaForm.codigo_orip && getOripName(fichaForm.codigo_orip) ? `(${getOripName(fichaForm.codigo_orip)})` : ''}</label>
                   <input 
                     type="text" 
                     value={fichaForm.codigo_orip}
@@ -2707,13 +2773,17 @@ export default function PredioModal({
                   <label style={{ display: "block", fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#6a6860", marginBottom: 6 }}>Condición Predio</label>
                   <select
                     value={fichaForm.condicion_predio}
-                    onChange={e => setFichaForm(prev => ({ ...prev, condicion_predio: e.target.value }))}
+                    onChange={e => handleFichaCondicionChange(e.target.value)}
                     style={{ width: "100%", padding: "8px 12px", background: "#fff", border: "1px solid #e8e4dc", borderRadius: 6, fontSize: 13, color: "#1a1a18", boxSizing: "border-box" }}
                   >
                     <option value="">Seleccionar...</option>
-                    {typeOptions?.condiciones?.map(opt => (
+                    {typeOptions?.condiciones?.filter(opt => {
+                      const code = (opt.ilicode || '').toLowerCase();
+                      const name = (opt.dispname || '').toLowerCase();
+                      return !code.includes('parque_cementerio') && !name.includes('parque cementerio');
+                    }).map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                        {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2728,7 +2798,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.tipos?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                        {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>
@@ -2743,7 +2813,7 @@ export default function PredioModal({
                     <option value="">Seleccionar...</option>
                     {typeOptions?.destinaciones?.map(opt => (
                       <option key={opt.t_id} value={String(opt.t_id)}>
-                        {`[${opt.t_id}] ${opt.ilicode ? `[${opt.ilicode}] ` : ''}${opt.dispname || opt.ilicode || opt.t_id}`}
+                        {`[${opt.t_id}] ${opt.dispname || opt.ilicode || opt.t_id}`}
                       </option>
                     ))}
                   </select>

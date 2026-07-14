@@ -34,12 +34,13 @@ export const mapPredio = (p) => {
     barrio: p.Barrio || p.barrio || getSeg(11, 2, '00'),
     manzana: p["Manzana o Vereda"] || p.manzana || p.vereda || getSeg(13, 4, '0000'),
     terreno: p.Terreno || p.terreno || getSeg(17, 4, '0000'),
-    condicion: p.Condicion || p.condicion || p.condicion_predio || getSeg(21, 1, '0'),
+    condicion: getSeg(21, 1, '') || p.Condicion || p.condicion || (p.condicion_predio === 57 ? '0' : p.condicion_predio === 58 || p.condicion_predio === 59 ? '9' : p.condicion_predio === 60 || p.condicion_predio === 61 ? '8' : p.condicion_predio === 64 ? '4' : p.condicion_predio === 65 ? '2' : p.condicion_predio === 66 ? '3' : '0'),
     edificio: p.Edificio || p.edificio || getSeg(22, 2, '00'),
     piso: p.Piso || p.piso || getSeg(24, 2, '00'),
     unidadPredial: p.UnidadPredial || p["Unidad Predial"] || p.unidad_predial || getSeg(26, 4, '0000'),
     matriculaInmobiliaria: matriculaInmobiliaria,
     circulo: circulo,
+    circuloNombre: getOripName(circulo),
     libro: libro,
     tomo: tomo,
     pagina: pagina,
@@ -93,7 +94,14 @@ export const mapPropietario = (p) => {
     tipoDerecho: tipoDerecho,
     tipoAgrupacion: p.TipoAgrupacion || p.tipo_agrupacion || null,
     tipoFuente: p.TipoFuente || p.tipo_fuente || 'Escritura_Publica',
-    escritura: p.Escritura || p.escritura || p.fuente_administrativa || '',
+    escritura: (() => {
+      const escVal = String(p.Escritura || p.escritura || p.fuente_administrativa || '').trim();
+      const npnVal = String(p.Npn || p.npn || '').trim();
+      if (escVal === npnVal || (escVal.length === 30 && /^\d+$/.test(escVal))) {
+        return '';
+      }
+      return escVal;
+    })(),
     entidad: p.Entidad || p.ente_emisor || p.entidad || '—',
     fechaEscritura: p.FechaEscritura || p.fecha_escritura || '',
     fecha: p.Fecha || p.fecha_registro || p.fecha || '',
@@ -156,5 +164,235 @@ export const mapConstruccion = (c, index) => {
     uso: c.IdUso && c.IdUso.includes('|') ? c.IdUso.split('|')[1] : (c.uso || c.Uso || uso),
     usoTradicional: c.usoTradicional || c.usoTadicional || (c.IdUso && c.IdUso.includes('|') ? c.IdUso.split('|')[1] : null),
     tipoPlanta: c.tipoPlanta || c.tipo_planta || null,
+    areaConstruida: c.areaConstruida != null ? parseFloat(c.areaConstruida) : (c.AreaConstruida != null ? parseFloat(c.AreaConstruida) : (c.area_construida != null ? parseFloat(c.area_construida) : null)),
   };
+};
+
+export const getOripName = (code) => {
+  if (!code) return '';
+  const clean = String(code).trim();
+  const padded = clean.padStart(3, '0');
+  const oripNames = {
+    // Antioquia
+    '001': 'Medellín (Zona Sur/Norte)', '01': 'Medellín', '1': 'Medellín',
+    '002': 'Abejorral',
+    '003': 'Amalfi',
+    '004': 'Andes',
+    '005': 'Bolívar (Ciudad Bolívar)',
+    '006': 'Cañasgordas',
+    '007': 'Dabeiba',
+    '008': 'Apartadó',
+    '010': 'Fredonia',
+    '011': 'Frontino',
+    '012': 'Girardota',
+    '013': 'Ituango',
+    '014': 'Jericó',
+    '015': 'Caucasia',
+    '017': 'La Ceja',
+    '018': 'Marinilla',
+    '019': 'Puerto Berrío',
+    '020': 'Rionegro',
+    '022': 'Santa Bárbara',
+    '024': 'Santa Fe de Antioquia',
+    '025': 'Santa Rosa de Osos',
+    '026': 'Santo Domingo',
+    '027': 'Segovia',
+    '028': 'Sonsón',
+    '029': 'Sopetrán', '29': 'Sopetrán',
+    '034': 'Turbo',
+    '035': 'Urrao',
+    '037': 'Yarumal',
+    '038': 'Yolombó',
+    '801': 'San Pedro de los Milagros',
+
+    // Atlántico
+    '040': 'Barranquilla',
+    '041': 'Sabanalarga',
+
+    // Arauca
+    '055': 'Arauca',
+
+    // Bogotá y Cundinamarca
+    '050': 'Bogotá D.C.', '050C': 'Bogotá (Centro)', '050N': 'Bogotá (Norte)', '050S': 'Bogotá (Sur)',
+    '150': 'Agua de Dios',
+    '161': 'Chocontá',
+    '162': 'Facatativá',
+    '163': 'Fómeque',
+    '164': 'Funza',
+    '165': 'Fusagasugá',
+    '166': 'Gachetá',
+    '167': 'Girardot',
+    '168': 'Guaduas',
+    '169': 'La Mesa',
+    '171': 'Pacho',
+    '172': 'San Juan de Rioseco',
+    '173': 'Soacha',
+    '174': 'Ubaté',
+    '175': 'Villeta',
+    '176': 'Zipaquirá',
+
+    // Bolívar
+    '060': 'Cartagena',
+    '061': 'El Carmen de Bolívar',
+    '062': 'Magangué',
+    '063': 'Mompós',
+    '064': 'Simití',
+
+    // Boyacá
+    '070': 'Tunja',
+    '071': 'Chiquinquirá',
+    '072': 'El Cocuy',
+    '073': 'Duitama',
+    '074': 'Garagoa',
+    '075': 'Guateque',
+    '076': 'Miraflores',
+    '077': 'Moniquirá',
+    '078': 'Puerto Boyacá',
+    '079': 'Ramiriquí',
+    '081': 'Soatá',
+    '082': 'Socha',
+    '083': 'Sogamoso',
+
+    // Caldas
+    '100': 'Manizales',
+    '101': 'Aguadas',
+    '102': 'Anserma',
+    '103': 'Manzanares',
+    '104': 'Pácora',
+    '105': 'Pensilvania',
+    '106': 'Riosucio',
+    '107': 'Salamina',
+
+    // Cauca
+    '120': 'Popayán',
+    '121': 'Bolívar (Cauca)',
+    '122': 'Caloto',
+    '123': 'Guapi',
+    '124': 'Patía (El Bordo)',
+    '125': 'Puerto Tejada',
+    '126': 'Santander de Quilichao',
+    '127': 'Silvia',
+
+    // Cesar
+    '140': 'Valledupar',
+    '141': 'Aguachica',
+    '142': 'Chimichagua',
+
+    // Chocó
+    '180': 'Quibdó',
+    '184': 'Istmina',
+
+    // Córdoba
+    '170': 'Montería',
+    '171': 'Cereté',
+    '172': 'Santa Cruz de Lorica',
+    '173': 'Sahagún',
+
+    // Huila
+    '200': 'Neiva',
+    '201': 'Garzón',
+    '202': 'La Plata',
+    '203': 'Pitalito',
+
+    // La Guajira
+    '210': 'Riohacha',
+    '211': 'San Juan del Cesar',
+    '212': 'Maicao',
+
+    // Magdalena
+    '220': 'Santa Marta',
+    '221': 'Ciénaga',
+    '222': 'El Banco',
+    '223': 'Plato',
+    '224': 'Pivijay',
+    '225': 'San Sebastián de Buenavista',
+
+    // Meta
+    '230': 'Villavicencio',
+    '231': 'Acacías',
+    '232': 'Granada',
+    '233': 'San Martín',
+
+    // Nariño
+    '240': 'Pasto',
+    '241': 'Barbacoas',
+    '242': 'Ipiales',
+    '243': 'La Cruz',
+    '244': 'La Unión',
+    '245': 'Samaniego',
+    '246': 'Túquerres',
+    '247': 'Tumaco',
+
+    // Norte de Santander
+    '250': 'Cúcuta',
+    '251': 'Ocaña',
+    '252': 'Pamplona',
+    '253': 'Salazar de las Palmas',
+
+    // Quindío
+    '270': 'Armenia',
+    '271': 'Calarcá',
+
+    // Risaralda
+    '280': 'Pereira',
+    '281': 'Belén de Umbría',
+    '282': 'Santa Rosa de Cabal',
+
+    // Santander
+    '300': 'Bucaramanga',
+    '301': 'Barrancabermeja',
+    '302': 'Barbosa (Santander)',
+    '303': 'Charalá',
+    '304': 'Málaga',
+    '305': 'Puente Nacional',
+    '306': 'Rionegro (Santander)',
+    '307': 'San Gil',
+    '308': 'San Vicente de Chucurí',
+    '309': 'Socorro',
+    '310': 'Vélez',
+
+    // Sucre
+    '340': 'Sincelejo',
+    '341': 'Corozal',
+    '342': 'Sincé',
+    '343': 'Sucre',
+    '344': 'Majagual',
+    '345': 'San Marcos',
+
+    // Tolima
+    '350': 'Ibagué',
+    '351': 'Armero (Guayabal)',
+    '352': 'Cajamarca',
+    '353': 'Chaparral',
+    '354': 'El Espinal',
+    '355': 'El Guamo',
+    '356': 'Lérida',
+    '357': 'El Líbano',
+    '358': 'Melgar',
+    '359': 'Purificación',
+    '360': 'Honda',
+
+    // Valle del Cauca
+    '370': 'Cali',
+    '371': 'Guadalajara de Buga',
+    '372': 'Buenaventura',
+    '373': 'Cartago',
+    '374': 'Florida',
+    '375': 'Palmira',
+    '376': 'Roldanillo',
+    '377': 'Sevilla',
+    '378': 'Tuluá',
+
+    // Caquetá / Putumayo / Llanos / Casanare / Otros
+    '160': 'Florencia (Caquetá)',
+    '420': 'Belén de los Andaquíes (Caquetá)',
+    '260': 'Mocoa (Putumayo)',
+    '261': 'Puerto Asís (Putumayo)',
+    '470': 'Yopal (Casanare)',
+    '058': 'Puerto Carreño (Vichada)',
+    '052': 'Inírida (Guainía)',
+    '051': 'San José del Guaviare (Guaviare)',
+    '290': 'Leticia (Amazonas)'
+  };
+  return oripNames[clean] || oripNames[padded] || '';
 };
