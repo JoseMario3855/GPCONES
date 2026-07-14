@@ -258,6 +258,29 @@ function TabFicha({ data, canManagePredios, selectedSchema, onEdit }) {
         <FieldRow label="Destino económico" last><Badge label={dest.label || "—"} bg={dest.bg} color={dest.color} /></FieldRow>
       </div>
 
+      {/* Área Terreno GDB / LADM */}
+      {(data.areaTotalTerreno != null || data.areaTerrenoGdb != null) && (
+        <>
+          <SectionLabel>Área del Terreno</SectionLabel>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 18 }}>
+            <Metric 
+              label="Área en metros cuadrados" 
+              value={data.areaTerrenoGdb != null 
+                ? `${Number(data.areaTerrenoGdb).toLocaleString("es-CO", { maximumFractionDigits: 2 })} m²`
+                : `${Number(data.areaTotalTerreno).toLocaleString("es-CO", { maximumFractionDigits: 2 })} m²`} 
+              mono 
+            />
+            <Metric 
+              label="Área en Hectáreas" 
+              value={data.areaTerrenoGdb != null 
+                ? `${(Number(data.areaTerrenoGdb) / 10000).toLocaleString("es-CO", { maximumFractionDigits: 4 })} ha`
+                : `${(Number(data.areaTotalTerreno) / 10000).toLocaleString("es-CO", { maximumFractionDigits: 4 })} ha`} 
+              mono 
+            />
+          </div>
+        </>
+      )}
+
       {(data.totalUnidades != null || data.areaTotalTerreno != null) && (
         <>
           <SectionLabel>Datos PH / Condominio</SectionLabel>
@@ -1525,6 +1548,7 @@ export default function PredioModal({
 }) {
   const [activeTab, setActiveTab] = useState("ficha");
   const [allGeometries, setAllGeometries] = useState([]);
+  // eslint-disable-next-line no-unused-vars
   const [loadingAllGeometries, setLoadingAllGeometries] = useState(false);
 
   useEffect(() => {

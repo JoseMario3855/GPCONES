@@ -99,6 +99,7 @@ const PredioForm = ({ predioId: propPredioId = null, schema: propSchema = null, 
       if (predioId) await loadPredioData();
     };
     init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [predioId, schemaName]);
 
   // Autoselección de municipio si hay solo uno en el schema

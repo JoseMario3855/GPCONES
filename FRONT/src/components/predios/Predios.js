@@ -654,6 +654,15 @@ const Predios = () => {
         title: 'Matrícula Inmobiliaria',
         render: (val) => <Text>{val || '-'}</Text>
       },
+      'area_hectareas': {
+        title: 'Área (ha)',
+        render: (val) => {
+          if (val === null || val === undefined || val === '') return <Text strong>-</Text>;
+          const numArea = typeof val === 'number' ? val : parseFloat(val);
+          if (isNaN(numArea)) return <Text strong>-</Text>;
+          return <Text strong>{numArea.toFixed(4)}</Text>;
+        }
+      },
       'Condicion': {
         title: 'Condición',
         render: (val) => <Tag color="orange">{val || '-'}</Tag>
@@ -732,6 +741,7 @@ const Predios = () => {
       'NumeroFicha',
       'Npn',
       'matricula_inmobiliaria',
+      'area_hectareas',
       'Condicion',
       'Tipo',
       'DestinoEconomico',

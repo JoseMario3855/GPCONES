@@ -977,6 +977,138 @@ class PrediosController {
           }
         }
 
+        // Intentar obtener el área del terreno desde las capas de la GDB o de la tabla del terreno
+        let areaTerrenoM2 = null;
+        try {
+          const possibleGdbTables = ['u_terreno', 'u_lc_terreno', 'r_terreno', 'r_lc_terreno'];
+          const existingGdbTables = [];
+          for (const tbl of possibleGdbTables) {
+            const tableExists = await query(
+              `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = $1 AND table_name = $2)`,
+              [schema, tbl]
+            );
+            if (tableExists.rows[0].exists) {
+              existingGdbTables.push(tbl);
+            }
+          }
+
+          if (existingGdbTables.length > 0 && predio.npn) {
+            const unionParts = [];
+            for (const tbl of existingGdbTables) {
+              const gdbColsResult = await query(
+                `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2`,
+                [schema, tbl]
+              );
+              const gdbCols = gdbColsResult.rows.map(r => r.column_name.toLowerCase());
+              const gdbCodeCol = gdbCols.find(c => ['codigo', 'numero_predial', 'npn', 'numero_predial_nacional'].includes(c));
+              const gdbAreaCol = gdbCols.find(c => ['shape_area', 'area'].includes(c));
+              
+              if (gdbCodeCol && gdbAreaCol) {
+                unionParts.push(`SELECT "${gdbAreaCol}" as area FROM "${schema}"."${tbl}" WHERE "${gdbCodeCol}" = $1`);
+              }
+            }
+            if (unionParts.length > 0) {
+              const areaQuery = `SELECT area FROM (${unionParts.join(' UNION ALL ')}) combined LIMIT 1`;
+              const areaRes = await query(areaQuery, [predio.npn]);
+              if (areaRes.rows.length > 0 && areaRes.rows[0].area != null) {
+                areaTerrenoM2 = parseFloat(areaRes.rows[0].area);
+              }
+            }
+          }
+
+          if (areaTerrenoM2 === null) {
+            const terrainTableResult = await query(
+              `SELECT table_name FROM information_schema.tables 
+               WHERE table_schema = $1 
+                 AND (table_name = 'cr_terreno' OR table_name = 'lc_terreno' OR table_name = 'ilc_terreno') 
+               LIMIT 1`,
+              [schema]
+            );
+            if (terrainTableResult.rows.length > 0) {
+              const terrainTableName = terrainTableResult.rows[0].table_name;
+              const terrainColsResult = await query(
+                `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2`,
+                [schema, terrainTableName]
+              );
+              const terrainCols = terrainColsResult.rows.map(r => r.column_name.toLowerCase());
+              const areaCol = terrainCols.find(c => ['area_hectareas', 'area_terreno', 'area_calculada', 'area_geometria', 'area'].includes(c));
+              
+              if (areaCol) {
+                const uebaunitResult = await query(
+                  `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'col_uebaunit' LIMIT 1`,
+                  [schema]
+                );
+                if (uebaunitResult.rows.length > 0) {
+                  const uebColsResult = await query(
+                    `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'col_uebaunit'`,
+                    [schema]
+                  );
+                  const uebCols = new Set(uebColsResult.rows.map(r => r.column_name));
+                  let linkCol = uebCols.has('ue_lc_terreno') ? 'ue_lc_terreno' : (uebCols.has('ue_ilc_terreno') ? 'ue_ilc_terreno' : (uebCols.has('ue_terreno') ? 'ue_terreno' : 'ue_cr_terreno'));
+                  
+                  const areaRes = await query(
+                    `SELECT t."${areaCol}" as area
+                     FROM "${schema}"."${terrainTableName}" t
+                     JOIN "${schema}".col_uebaunit ueb ON ueb.${linkCol} = t.t_id
+                     WHERE ueb.baunit = $1::bigint LIMIT 1`,
+                    [id]
+                  );
+                  if (areaRes.rows.length > 0 && areaRes.rows[0].area != null) {
+                    areaTerrenoM2 = parseFloat(areaRes.rows[0].area);
+                    if (areaCol.toLowerCase() === 'area_hectareas') {
+                      areaTerrenoM2 = areaTerrenoM2 * 10000;
+                    }
+                  }
+                }
+              }
+            }
+          }
+          
+          if (areaTerrenoM2 === null) {
+            const terrainTableResult = await query(
+              `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND (table_name = 'cr_terreno' OR table_name = 'lc_terreno' OR table_name = 'ilc_terreno') LIMIT 1`,
+              [schema]
+            );
+            if (terrainTableResult.rows.length > 0) {
+              const terrainTableName = terrainTableResult.rows[0].table_name;
+              const uebaunitResult = await query(
+                `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'col_uebaunit' LIMIT 1`,
+                [schema]
+              );
+              if (uebaunitResult.rows.length > 0) {
+                const uebColsResult = await query(
+                  `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'col_uebaunit'`,
+                  [schema]
+                );
+                const uebCols = new Set(uebColsResult.rows.map(r => r.column_name));
+                let linkCol = uebCols.has('ue_lc_terreno') ? 'ue_lc_terreno' : (uebCols.has('ue_ilc_terreno') ? 'ue_ilc_terreno' : (uebCols.has('ue_terreno') ? 'ue_terreno' : 'ue_cr_terreno'));
+                
+                const sridRes = await query(
+                  `SELECT Find_SRID($1, $2, 'geometria') as srid`,
+                  [schema, terrainTableName]
+                );
+                const srid = sridRes.rows.length > 0 ? sridRes.rows[0].srid : null;
+                if (srid && srid !== 4326) {
+                  const areaRes = await query(
+                    `SELECT ST_Area(t.geometria) as area
+                     FROM "${schema}"."${terrainTableName}" t
+                     JOIN "${schema}".col_uebaunit ueb ON ueb.${linkCol} = t.t_id
+                     WHERE ueb.baunit = $1::bigint LIMIT 1`,
+                    [id]
+                  );
+                  if (areaRes.rows.length > 0 && areaRes.rows[0].area != null) {
+                    areaTerrenoM2 = parseFloat(areaRes.rows[0].area);
+                  }
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error obteniendo área del terreno:', err.message);
+        }
+
+        predio.area_terreno_gdb = areaTerrenoM2;
+        
         return res.json({ success: true, data: predio });
       }
 
@@ -3283,6 +3415,80 @@ class PrediosController {
         }
       }
 
+      // Generar expresión dinámica para obtener el área de terreno en el listado
+      let listAreaExpr = '0';
+      try {
+        const allTablesRes = await query(
+          `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE'`,
+          [schemaName]
+        );
+        const existingTables = new Set(allTablesRes.rows.map(r => r.table_name.toLowerCase()));
+        const colsLower = new Set(columns.map(c => c.toLowerCase()));
+
+        const getTableCols = async (tbl) => {
+          if (!existingTables.has(tbl.toLowerCase())) return [];
+          const colsRes = await query(
+            `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2`,
+            [schemaName, tbl]
+          );
+          return colsRes.rows.map(r => r.column_name.toLowerCase());
+        };
+
+        const uebCols = existingTables.has('col_uebaunit') ? await getTableCols('col_uebaunit') : [];
+        const uebColsSet = new Set(uebCols);
+        const crLinkCol = uebColsSet.has('ue_cr_terreno') ? 'ue_cr_terreno' : (uebColsSet.has('ue_terreno') ? 'ue_terreno' : null);
+        const lcLinkCol = uebColsSet.has('ue_lc_terreno') ? 'ue_lc_terreno' : (uebColsSet.has('ue_terreno') ? 'ue_terreno' : null);
+        const ilcLinkCol = uebColsSet.has('ue_ilc_terreno') ? 'ue_ilc_terreno' : (uebColsSet.has('ue_terreno') ? 'ue_terreno' : null);
+
+        const crCols = await getTableCols('cr_terreno');
+        const lcCols = await getTableCols('lc_terreno');
+        const ilcCols = await getTableCols('ilc_terreno');
+
+        const crAreaCol = crCols.find(c => ['area_hectareas', 'area_terreno', 'area_calculada', 'area_geometria', 'area'].includes(c));
+        const lcAreaCol = lcCols.find(c => ['area_hectareas', 'area_terreno', 'area_calculada', 'area_geometria', 'area'].includes(c));
+        const ilcAreaCol = ilcCols.find(c => ['area_hectareas', 'area_terreno', 'area_calculada', 'area_geometria', 'area'].includes(c));
+
+        const gdbParts = [];
+        if (existingTables.has('u_terreno')) gdbParts.push(`(SELECT SUM(shape_area) FROM "${schemaName}".u_terreno WHERE codigo = predio.${npnColumn})`);
+        if (existingTables.has('r_terreno')) gdbParts.push(`(SELECT SUM(shape_area) FROM "${schemaName}".r_terreno WHERE codigo = predio.${npnColumn})`);
+        if (existingTables.has('u_lc_terreno')) gdbParts.push(`(SELECT SUM(shape_area) FROM "${schemaName}".u_lc_terreno WHERE codigo = predio.${npnColumn})`);
+        if (existingTables.has('r_lc_terreno')) gdbParts.push(`(SELECT SUM(shape_area) FROM "${schemaName}".r_lc_terreno WHERE codigo = predio.${npnColumn})`);
+
+        const terrainParts = [];
+        if (existingTables.has('cr_terreno') && existingTables.has('col_uebaunit') && crAreaCol && crLinkCol) {
+          const factor = crAreaCol === 'area_hectareas' ? '' : ' / 10000.0';
+          terrainParts.push(`(SELECT SUM(t."${crAreaCol}"${factor}) FROM "${schemaName}".cr_terreno t JOIN "${schemaName}".col_uebaunit ueb ON ueb."${crLinkCol}" = t.t_id WHERE ueb.baunit = predio.t_id)`);
+        }
+        if (existingTables.has('lc_terreno') && existingTables.has('col_uebaunit') && lcAreaCol && lcLinkCol) {
+          const factor = lcAreaCol === 'area_hectareas' ? '' : ' / 10000.0';
+          terrainParts.push(`(SELECT SUM(t."${lcAreaCol}"${factor}) FROM "${schemaName}".lc_terreno t JOIN "${schemaName}".col_uebaunit ueb ON ueb."${lcLinkCol}" = t.t_id WHERE ueb.baunit = predio.t_id)`);
+        }
+        if (existingTables.has('ilc_terreno') && existingTables.has('col_uebaunit') && ilcAreaCol && ilcLinkCol) {
+          const factor = ilcAreaCol === 'area_hectareas' ? '' : ' / 10000.0';
+          terrainParts.push(`(SELECT SUM(t."${ilcAreaCol}"${factor}) FROM "${schemaName}".ilc_terreno t JOIN "${schemaName}".col_uebaunit ueb ON ueb."${ilcLinkCol}" = t.t_id WHERE ueb.baunit = predio.t_id)`);
+        }
+
+        const coalesceList = [];
+        if (gdbParts.length > 0) {
+          coalesceList.push(`(COALESCE(${gdbParts.join(', ')}) / 10000.0)`);
+        }
+        if (terrainParts.length > 0) {
+          coalesceList.push(`COALESCE(${terrainParts.join(', ')})`);
+        }
+        if (colsLower.has('area_hectareas')) {
+          coalesceList.push(`predio.area_hectareas`);
+        } else if (colsLower.has('area_registral_m2')) {
+          coalesceList.push(`(predio.area_registral_m2 / 10000.0)`);
+        } else if (colsLower.has('area_catastral_terreno')) {
+          coalesceList.push(`(predio.area_catastral_terreno / 10000.0)`);
+        }
+        coalesceList.push('0');
+
+        listAreaExpr = `COALESCE(${coalesceList.join(', ')})`;
+      } catch (err) {
+        console.warn('⚠️ No se pudo determinar el área de terreno para el listado de predios:', err.message);
+      }
+
       let baseQuery = `SELECT * FROM ${fullTableName}`;
 
       if (isLadmCol) {
@@ -3294,6 +3500,7 @@ class PrediosController {
             condicion.ilicode as "Condicion",
             tipo.ilicode as "Tipo",
             destino.ilicode as "DestinoEconomico",
+            ${listAreaExpr} as "area_hectareas_computed",
             ${geometrySelectionStr ? geometrySelectionStr.substring(1) + ',' : ''}
             CASE
               WHEN tipodir.ilicode = 'No_Estructurada' THEN direccion.nombre_predio
@@ -3502,6 +3709,10 @@ class PrediosController {
         
         if (row.CondicionPredio && !mapped.estado) mapped.estado = row.CondicionPredio;
         else if (row.condicion_predio && !mapped.estado) mapped.estado = row.condicion_predio;
+        
+        if (row.area_hectareas_computed != null) {
+          mapped.area_hectareas = parseFloat(row.area_hectareas_computed);
+        }
         
         if (row.geometry_geojson) {
           try {

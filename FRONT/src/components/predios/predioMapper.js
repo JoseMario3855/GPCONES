@@ -53,6 +53,7 @@ export const mapPredio = (p) => {
     totalUnidades: p.UnidadesEnRPH ? parseInt(p.UnidadesEnRPH) : (p.total_unidades ? parseInt(p.total_unidades) : null),
     numeroTorres: p.TotalEdificios ? parseInt(p.TotalEdificios) : (p.numero_torres ? parseInt(p.numero_torres) : null),
     areaTotalTerreno: p.AreaTotalTerreno ? parseFloat(p.AreaTotalTerreno) : (p.area_total_terreno ? parseFloat(p.area_total_terreno) : (p.area_hectareas ? parseFloat(p.area_hectareas) * 10000 : null)),
+    areaTerrenoGdb: p.area_terreno_gdb != null ? parseFloat(p.area_terreno_gdb) : null,
     areaTotalTerrenoComun: p.AreaLoteComun ? parseFloat(p.AreaLoteComun) : (p.area_total_terreno_comun ? parseFloat(p.area_total_terreno_comun) : null),
     areaTotalTerrenoPrivada: p.AreaLotePrivada ? parseFloat(p.AreaLotePrivada) : (p.area_total_terreno_privada ? parseFloat(p.area_total_terreno_privada) : null),
     areaTotalConstruida: p.AreaTotalConstruida ? parseFloat(p.AreaTotalConstruida) : (p.area_total_construida ? parseFloat(p.area_total_construida) : null),
@@ -274,7 +275,7 @@ export const getOripName = (code) => {
     '127': 'Silvia',
 
     // Cesar
-    '140': 'Valledupar',
+    '190': 'Valledupar',
     '141': 'Aguachica',
     '142': 'Chimichagua',
 
@@ -283,10 +284,10 @@ export const getOripName = (code) => {
     '184': 'Istmina',
 
     // Córdoba
-    '170': 'Montería',
-    '171': 'Cereté',
-    '172': 'Santa Cruz de Lorica',
-    '173': 'Sahagún',
+    '140': 'Montería',
+    '143': 'Cereté',
+    '146': 'Santa Cruz de Lorica',
+    '148': 'Sahagún',
 
     // Huila
     '200': 'Neiva',
