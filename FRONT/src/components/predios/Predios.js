@@ -733,8 +733,8 @@ const Predios = () => {
 
     // Obtener todas las columnas disponibles
     const allColumns = availableColumns.length > 0 
-      ? availableColumns 
-      : (predios.length > 0 ? Object.keys(predios[0]) : []);
+      ? [...availableColumns, 'area_hectareas'] 
+      : (predios.length > 0 ? [...Object.keys(predios[0]), 'area_hectareas'] : ['area_hectareas']);
 
     // Orden de columnas alineado con la query actualizada
     const requestedOrder = [
