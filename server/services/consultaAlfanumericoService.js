@@ -821,21 +821,19 @@ class ConsultaAlfanumericoService {
                 const areaMap = new Map();
                 for (const row of areaRes.rows) {
                   if (row.id_val != null) {
-                    let gdbId = String(row.id_val).trim().toLowerCase();
-                    if (gdbId.includes('-')) {
-                      gdbId = gdbId.split('-').pop();
-                    }
-                    areaMap.set(gdbId, parseFloat(row.area));
+                    const gdbId = String(row.id_val).trim().toLowerCase();
+                    const parts = gdbId.split(/[_-]/);
+                    const cleanGdbId = parts[parts.length - 1];
+                    areaMap.set(cleanGdbId, parseFloat(row.area));
                   }
                 }
                 
                 for (const constItem of result.data) {
-                  let dbId = String(constItem.identificador || constItem.etiqueta || '').trim().toLowerCase();
-                  if (dbId.includes('-')) {
-                    dbId = dbId.split('-').pop();
-                  }
-                  if (dbId && areaMap.has(dbId)) {
-                    constItem.areaConstruidaGdb = areaMap.get(dbId);
+                  const dbIdRaw = String(constItem.identificador || constItem.etiqueta || '').trim().toLowerCase();
+                  const parts = dbIdRaw.split(/[_-]/);
+                  const cleanDbId = parts[parts.length - 1];
+                  if (cleanDbId && areaMap.has(cleanDbId)) {
+                    constItem.areaConstruidaGdb = areaMap.get(cleanDbId);
                   }
                 }
               }

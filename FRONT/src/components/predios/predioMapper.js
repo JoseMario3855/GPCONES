@@ -160,7 +160,8 @@ export const mapConstruccion = (c, index) => {
       const rawId = c.NumeroConstruccion || c.identificador || c.secuencia || '';
       if (!rawId) return `UC-${index + 1}`;
       const clean = String(rawId).trim();
-      return clean.includes('-') ? clean.split('-').pop() : clean;
+      const parts = clean.split(/[_-]/);
+      return parts[parts.length - 1];
     })(),
     totalPlantas: c.total_plantas != null ? parseInt(c.total_plantas) : (c.NumeroPisos ? parseInt(c.NumeroPisos) : (c.totalPlantas ? parseInt(c.totalPlantas) : (c.total_pisos ? parseInt(c.total_pisos) : null))),
     altura: c.Altura != null ? parseFloat(c.Altura) : (c.altura != null ? parseFloat(c.altura) : null),
