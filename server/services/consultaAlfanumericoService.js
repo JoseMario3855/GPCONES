@@ -821,14 +821,21 @@ class ConsultaAlfanumericoService {
                 const areaMap = new Map();
                 for (const row of areaRes.rows) {
                   if (row.id_val != null) {
-                    areaMap.set(String(row.id_val).trim().toLowerCase(), parseFloat(row.area));
+                    let gdbId = String(row.id_val).trim().toLowerCase();
+                    if (gdbId.includes('-')) {
+                      gdbId = gdbId.split('-').pop();
+                    }
+                    areaMap.set(gdbId, parseFloat(row.area));
                   }
                 }
                 
                 for (const constItem of result.data) {
-                  const idStr = String(constItem.identificador || constItem.etiqueta || '').trim().toLowerCase();
-                  if (idStr && areaMap.has(idStr)) {
-                    constItem.areaConstruidaGdb = areaMap.get(idStr);
+                  let dbId = String(constItem.identificador || constItem.etiqueta || '').trim().toLowerCase();
+                  if (dbId.includes('-')) {
+                    dbId = dbId.split('-').pop();
+                  }
+                  if (dbId && areaMap.has(dbId)) {
+                    constItem.areaConstruidaGdb = areaMap.get(dbId);
                   }
                 }
               }

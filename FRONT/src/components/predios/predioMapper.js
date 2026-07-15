@@ -156,7 +156,12 @@ export const mapConstruccion = (c, index) => {
   return {
     caracteristica: c.t_id || c.caracteristica || index + 1,
     tipo: tipo,
-    identificador: c.NumeroConstruccion || c.identificador || c.secuencia || `UC-${index + 1}`,
+    identificador: (() => {
+      const rawId = c.NumeroConstruccion || c.identificador || c.secuencia || '';
+      if (!rawId) return `UC-${index + 1}`;
+      const clean = String(rawId).trim();
+      return clean.includes('-') ? clean.split('-').pop() : clean;
+    })(),
     totalPlantas: c.total_plantas != null ? parseInt(c.total_plantas) : (c.NumeroPisos ? parseInt(c.NumeroPisos) : (c.totalPlantas ? parseInt(c.totalPlantas) : (c.total_pisos ? parseInt(c.total_pisos) : null))),
     altura: c.Altura != null ? parseFloat(c.Altura) : (c.altura != null ? parseFloat(c.altura) : null),
     plantaUbicacion: c.plantaubicacion != null ? parseInt(c.plantaubicacion) : (c.plantaUbicacion != null ? parseInt(c.plantaUbicacion) : null),
